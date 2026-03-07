@@ -1,11 +1,29 @@
 "use client";
 
-import { useState, useRef, useEffect, type FormEvent } from "react";
+import { useState, useRef, useEffect, useCallback, type FormEvent } from "react";
 import { ConnectionState } from "@estuary-ai/sdk";
 import { useEstuary, type EstuaryConfig } from "@/hooks/useEstuary";
 import VoiceOrb from "./VoiceOrb";
 
 const DEFAULT_SERVER_URL = "https://api.estuary-ai.com";
+
+function encodeConfig(config: EstuaryConfig): string {
+  return btoa(JSON.stringify(config));
+}
+
+function decodeConfig(hash: string): EstuaryConfig | null {
+  try {
+    const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+    if (!raw) return null;
+    const parsed = JSON.parse(atob(raw));
+    if (parsed.serverUrl && parsed.apiKey && parsed.characterId && parsed.playerId) {
+      return parsed as EstuaryConfig;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 function ConnectionBadge({ state }: { state: ConnectionState }) {
   const config: Record<string, { color: string; label: string }> = {
@@ -62,8 +80,32 @@ export default function ChatApp() {
 
   const [textInput, setTextInput] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [isFromLink, setIsFromLink] = useState(false);
+  const autoConnectRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isConnected = connectionState === ConnectionState.Connected;
+
+  // Parse shared config from URL hash on mount
+  useEffect(() => {
+    const shared = decodeConfig(window.location.hash);
+    if (shared) {
+      setConfig(shared);
+      setIsFromLink(true);
+      autoConnectRef.current = true;
+    }
+  }, []);
+
+  // Auto-connect when loaded from a shared link
+  useEffect(() => {
+    if (autoConnectRef.current && config.apiKey) {
+      autoConnectRef.current = false;
+      setIsConnecting(true);
+      connect(config)
+        .catch(() => {})
+        .finally(() => setIsConnecting(false));
+    }
+  }, [config, connect]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -88,6 +130,14 @@ export default function ChatApp() {
     setTextInput("");
   };
 
+  const generateShareLink = useCallback(() => {
+    const url = new URL(window.location.href.split("#")[0]);
+    url.hash = encodeConfig(config);
+    const link = url.toString();
+    setShareLink(link);
+    navigator.clipboard.writeText(link).catch(() => {});
+  }, [config]);
+
   // --- Setup Screen ---
   if (!isConnected && connectionState !== ConnectionState.Connecting && connectionState !== ConnectionState.Reconnecting) {
     return (
@@ -109,7 +159,9 @@ export default function ChatApp() {
               </svg>
             </div>
             <h1 className="text-2xl font-bold tracking-tight">Estuary Voice Chat</h1>
-            <p className="text-sm text-muted mt-1">Real-time AI conversation demo</p>
+            <p className="text-sm text-muted mt-1">
+              {isFromLink ? "Joining shared session..." : "Real-time AI conversation demo"}
+            </p>
           </div>
 
           <form onSubmit={handleConnect} className="space-y-4">
@@ -207,6 +259,21 @@ export default function ChatApp() {
         </div>
         <div className="flex items-center gap-3">
           <ConnectionBadge state={connectionState} />
+          {/* Share button */}
+          <button
+            onClick={generateShareLink}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border text-muted hover:text-accent-light hover:border-accent/50 transition"
+            title="Copy invite link"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <line x1="8.59" x2="15.42" y1="13.51" y2="17.49" />
+              <line x1="15.41" x2="8.59" y1="6.51" y2="10.49" />
+            </svg>
+            Share
+          </button>
           <button
             onClick={disconnect}
             className="px-3 py-1.5 text-xs rounded-lg border border-border text-muted hover:text-danger hover:border-danger/50 transition"
@@ -215,6 +282,29 @@ export default function ChatApp() {
           </button>
         </div>
       </header>
+
+      {/* Share link toast */}
+      {shareLink && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up">
+          <div className="rounded-lg bg-surface border border-border px-4 py-3 shadow-lg backdrop-blur-sm max-w-md">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs font-medium text-foreground">Invite link copied to clipboard!</p>
+              <button
+                onClick={() => setShareLink(null)}
+                className="text-muted hover:text-foreground text-xs"
+              >
+                Dismiss
+              </button>
+            </div>
+            <p className="text-[10px] text-muted font-mono break-all select-all leading-relaxed">
+              {shareLink}
+            </p>
+            <p className="text-[10px] text-muted mt-2">
+              Anyone with this link can chat with the same character using your credentials.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
