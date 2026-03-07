@@ -1,0 +1,373 @@
+"use client";
+
+import { useState, useRef, useEffect, type FormEvent } from "react";
+import { ConnectionState } from "@estuary-ai/sdk";
+import { useEstuary, type EstuaryConfig } from "@/hooks/useEstuary";
+import VoiceOrb from "./VoiceOrb";
+
+const DEFAULT_SERVER_URL = "https://api.estuary-ai.com";
+
+function ConnectionBadge({ state }: { state: ConnectionState }) {
+  const config: Record<string, { color: string; label: string }> = {
+    [ConnectionState.Connected]: { color: "bg-success", label: "Connected" },
+    [ConnectionState.Connecting]: { color: "bg-warning", label: "Connecting" },
+    [ConnectionState.Reconnecting]: { color: "bg-warning", label: "Reconnecting" },
+    [ConnectionState.Error]: { color: "bg-danger", label: "Error" },
+    [ConnectionState.Disconnected]: { color: "bg-muted", label: "Disconnected" },
+  };
+  const c = config[state] ?? config[ConnectionState.Disconnected];
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted">
+      <div className={`w-2 h-2 rounded-full ${c.color}`} />
+      {c.label}
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex items-center gap-1 px-4 py-3">
+      <div className="typing-dot w-2 h-2 rounded-full bg-accent-light" />
+      <div className="typing-dot w-2 h-2 rounded-full bg-accent-light" />
+      <div className="typing-dot w-2 h-2 rounded-full bg-accent-light" />
+    </div>
+  );
+}
+
+export default function ChatApp() {
+  const {
+    connectionState,
+    session,
+    messages,
+    sttText,
+    isVoiceActive,
+    isMuted,
+    isBotSpeaking,
+    error,
+    connect,
+    disconnect,
+    sendText,
+    startVoice,
+    stopVoice,
+    toggleMute,
+    interruptBot,
+  } = useEstuary();
+
+  const [config, setConfig] = useState<EstuaryConfig>({
+    serverUrl: DEFAULT_SERVER_URL,
+    apiKey: "",
+    characterId: "",
+    playerId: `demo-user-${Math.random().toString(36).slice(2, 8)}`,
+  });
+
+  const [textInput, setTextInput] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isConnected = connectionState === ConnectionState.Connected;
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleConnect = async (e: FormEvent) => {
+    e.preventDefault();
+    setIsConnecting(true);
+    try {
+      await connect(config);
+    } catch {
+      // error is set in the hook
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleSendText = (e: FormEvent) => {
+    e.preventDefault();
+    if (!textInput.trim()) return;
+    sendText(textInput.trim());
+    setTextInput("");
+  };
+
+  // --- Setup Screen ---
+  if (!isConnected && connectionState !== ConnectionState.Connecting && connectionState !== ConnectionState.Reconnecting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        {/* Background gradient blobs */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -left-40 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl" />
+          <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl" />
+        </div>
+
+        <div className="relative w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 mb-4">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" x2="12" y1="19" y2="23" />
+                <line x1="8" x2="16" y1="23" y2="23" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight">Estuary Voice Chat</h1>
+            <p className="text-sm text-muted mt-1">Real-time AI conversation demo</p>
+          </div>
+
+          <form onSubmit={handleConnect} className="space-y-4">
+            <div className="rounded-xl border border-border bg-surface p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">Server URL</label>
+                <input
+                  type="url"
+                  value={config.serverUrl}
+                  onChange={(e) => setConfig({ ...config, serverUrl: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition"
+                  placeholder="https://api.estuary-ai.com"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">API Key</label>
+                <input
+                  type="password"
+                  value={config.apiKey}
+                  onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition font-mono"
+                  placeholder="est_..."
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">Character ID</label>
+                <input
+                  type="text"
+                  value={config.characterId}
+                  onChange={(e) => setConfig({ ...config, characterId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition font-mono"
+                  placeholder="uuid-of-your-character"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1.5">Player ID</label>
+                <input
+                  type="text"
+                  value={config.playerId}
+                  onChange={(e) => setConfig({ ...config, playerId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition font-mono"
+                  placeholder="your-player-id"
+                  required
+                />
+              </div>
+            </div>
+
+            {error && (
+              <div className="rounded-lg bg-danger/10 border border-danger/20 px-4 py-2.5 text-sm text-danger">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isConnecting}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-medium text-sm hover:from-indigo-600 hover:to-violet-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isConnecting ? "Connecting..." : "Connect"}
+            </button>
+          </form>
+
+          <p className="text-xs text-center text-muted mt-6">
+            Powered by{" "}
+            <span className="text-accent-light font-medium">@estuary-ai/sdk</span>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Chat Screen ---
+  return (
+    <div className="h-screen flex flex-col">
+      {/* Header */}
+      <header className="flex items-center justify-between px-5 py-3 border-b border-border bg-surface/50 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-sm font-semibold">Estuary Voice Chat</h1>
+            {session && (
+              <p className="text-[10px] text-muted font-mono truncate max-w-[200px]">
+                {session.sessionId.slice(0, 8)}...
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <ConnectionBadge state={connectionState} />
+          <button
+            onClick={disconnect}
+            className="px-3 py-1.5 text-xs rounded-lg border border-border text-muted hover:text-danger hover:border-danger/50 transition"
+          >
+            Disconnect
+          </button>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Voice orb section */}
+        <div className="flex-shrink-0 py-8 flex justify-center">
+          <VoiceOrb
+            connectionState={connectionState}
+            isVoiceActive={isVoiceActive}
+            isBotSpeaking={isBotSpeaking}
+            isMuted={isMuted}
+            sttText={sttText}
+          />
+        </div>
+
+        {/* Voice controls */}
+        <div className="flex-shrink-0 flex justify-center gap-3 pb-4">
+          {!isVoiceActive ? (
+            <button
+              onClick={startVoice}
+              disabled={!isConnected}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white text-sm font-medium hover:from-indigo-600 hover:to-violet-700 transition-all disabled:opacity-50"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              </svg>
+              Start Voice
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={toggleMute}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all ${
+                  isMuted
+                    ? "bg-amber-600/20 text-amber-400 border border-amber-600/30"
+                    : "bg-surface-light text-foreground border border-border hover:bg-surface"
+                }`}
+              >
+                {isMuted ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="1" x2="23" y1="1" y2="23" />
+                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .78-.13 1.53-.36 2.24" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  </svg>
+                )}
+                {isMuted ? "Unmute" : "Mute"}
+              </button>
+              {isBotSpeaking && (
+                <button
+                  onClick={interruptBot}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-danger/20 text-danger border border-danger/30 text-sm font-medium hover:bg-danger/30 transition-all"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                  Interrupt
+                </button>
+              )}
+              <button
+                onClick={stopVoice}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-surface-light text-danger border border-border text-sm font-medium hover:border-danger/50 transition-all"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+                Stop Voice
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 pb-4">
+          <div className="max-w-2xl mx-auto space-y-3">
+            {messages.length === 0 && (
+              <div className="text-center py-8 text-muted text-sm">
+                Send a message or start voice to begin chatting
+              </div>
+            )}
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`animate-fade-in-up flex ${
+                  msg.role === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
+                <div
+                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    msg.role === "user"
+                      ? "bg-accent text-white rounded-br-md"
+                      : "bg-surface-light border border-border rounded-bl-md"
+                  } ${!msg.isFinal && msg.role === "bot" ? "opacity-80" : ""}`}
+                >
+                  {msg.text}
+                  {!msg.isFinal && msg.role === "bot" && (
+                    <span className="inline-block w-1.5 h-4 bg-accent-light/60 ml-0.5 animate-pulse rounded-sm" />
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {/* Bot typing indicator when we have a non-final bot message or bot is speaking without text */}
+            {isBotSpeaking &&
+              !messages.some((m) => m.role === "bot" && !m.isFinal) && (
+                <div className="flex justify-start">
+                  <div className="bg-surface-light border border-border rounded-2xl rounded-bl-md">
+                    <TypingIndicator />
+                  </div>
+                </div>
+              )}
+
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+
+        {/* Error toast */}
+        {error && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up">
+            <div className="rounded-lg bg-danger/10 border border-danger/20 px-4 py-2 text-sm text-danger backdrop-blur-sm">
+              {error}
+            </div>
+          </div>
+        )}
+
+        {/* Text input */}
+        <div className="flex-shrink-0 p-4 border-t border-border bg-surface/50 backdrop-blur-sm">
+          <form
+            onSubmit={handleSendText}
+            className="max-w-2xl mx-auto flex gap-2"
+          >
+            <input
+              type="text"
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Type a message..."
+              className="flex-1 px-4 py-2.5 rounded-xl bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition placeholder:text-muted"
+              disabled={!isConnected}
+            />
+            <button
+              type="submit"
+              disabled={!isConnected || !textInput.trim()}
+              className="px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-light transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}

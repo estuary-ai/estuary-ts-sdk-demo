@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Estuary TypeScript SDK Demo
+
+Real-time AI voice and text conversation demo built with the Estuary TypeScript SDK (`@estuary-ai/sdk`) and Next.js 16.
+
+## What This Demos
+
+- Text chat with streaming responses
+- Voice input via WebSocket or LiveKit WebRTC
+- Live speech-to-text transcription
+- Animated voice orb with state-aware visual feedback
+- Bot interrupt capability
+- Connection lifecycle management
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000 and enter your Estuary credentials:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Server URL:** `https://api.estuary-ai.com` (or your self-hosted instance)
+- **API Key:** Your `est_...` key from the Estuary dashboard
+- **Character ID:** UUID of the AI character to chat with
+- **Player ID:** Any unique identifier for the end user
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Tech Stack
 
-## Learn More
+- [Next.js 16](https://nextjs.org) (App Router, Turbopack)
+- [React 19](https://react.dev)
+- [Tailwind CSS v4](https://tailwindcss.com)
+- [@estuary-ai/sdk](https://www.npmjs.com/package/@estuary-ai/sdk)
+- [livekit-client](https://www.npmjs.com/package/livekit-client) (optional, for WebRTC voice)
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+  app/
+    page.tsx          # Entry point (dynamic import, SSR disabled)
+    layout.tsx        # Root layout with fonts
+    globals.css       # Theme, animations, Tailwind config
+  components/
+    ChatApp.tsx       # Main chat interface (config screen + chat UI)
+    VoiceOrb.tsx      # Animated orb visualization
+  hooks/
+    useEstuary.ts     # React hook wrapping EstuaryClient
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Dogfood Findings
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [DOGFOOD_FINDINGS.md](./DOGFOOD_FINDINGS.md) for documented painpoints, bugs, and wishlist items discovered during development.
