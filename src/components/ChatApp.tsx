@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, type FormEvent } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent } from "react";
 import { ConnectionState } from "@estuary-ai/sdk";
 import { useEstuary, type EstuaryConfig } from "@/hooks/useEstuary";
-import VoiceOrb from "./VoiceOrb";
+import CharacterAvatar, { type CharacterState } from "./CharacterAvatar";
 
 const DEFAULT_SERVER_URL = "https://api.estuary-ai.com";
 
@@ -52,6 +52,19 @@ function TypingIndicator() {
   );
 }
 
+function deriveCharacterState(
+  isVoiceActive: boolean,
+  isBotSpeaking: boolean,
+  sttText: string,
+  hasPendingBotMessage: boolean,
+): CharacterState {
+  if (isBotSpeaking) return "speaking";
+  if (hasPendingBotMessage) return "thinking";
+  if (sttText) return "listening";
+  if (isVoiceActive) return "listening";
+  return "idle";
+}
+
 export default function ChatApp() {
   const {
     connectionState,
@@ -85,6 +98,34 @@ export default function ChatApp() {
   const autoConnectRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isConnected = connectionState === ConnectionState.Connected;
+
+  // Derive character state from conversation
+  const hasPendingBotMessage = useMemo(
+    () => messages.some((m) => m.role === "bot" && !m.isFinal),
+    [messages]
+  );
+
+  // Detect "happy" from final bot messages containing positive sentiment words
+  const lastBotMessage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "bot" && messages[i].isFinal) return messages[i];
+    }
+    return null;
+  }, [messages]);
+
+  const isHappyResponse = useMemo(() => {
+    if (!lastBotMessage) return false;
+    const text = lastBotMessage.text.toLowerCase();
+    const happyPatterns = /(!|haha|great|awesome|love|wonderful|amazing|glad|happy|excited|fantastic|thank|welcome|sure thing|of course|absolutely)/;
+    return happyPatterns.test(text);
+  }, [lastBotMessage]);
+
+  const characterState: CharacterState = useMemo(() => {
+    const base = deriveCharacterState(isVoiceActive, isBotSpeaking, sttText, hasPendingBotMessage);
+    // Override to "happy" briefly after a positive bot response (when idle)
+    if (base === "idle" && isHappyResponse) return "happy";
+    return base;
+  }, [isVoiceActive, isBotSpeaking, sttText, hasPendingBotMessage, isHappyResponse]);
 
   // Parse shared config from URL hash on mount
   useEffect(() => {
@@ -236,11 +277,11 @@ export default function ChatApp() {
     );
   }
 
-  // --- Chat Screen ---
+  // --- Split-Screen Chat + Character ---
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
-      <header className="flex items-center justify-between px-5 py-3 border-b border-border bg-surface/50 backdrop-blur-sm">
+      <header className="flex items-center justify-between px-5 py-3 border-b border-border bg-surface/50 backdrop-blur-sm flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -259,7 +300,6 @@ export default function ChatApp() {
         </div>
         <div className="flex items-center gap-3">
           <ConnectionBadge state={connectionState} />
-          {/* Share button */}
           <button
             onClick={generateShareLink}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border text-muted hover:text-accent-light hover:border-accent/50 transition"
@@ -306,156 +346,180 @@ export default function ChatApp() {
         </div>
       )}
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Voice orb section */}
-        <div className="flex-shrink-0 py-8 flex justify-center">
-          <VoiceOrb
-            connectionState={connectionState}
-            isVoiceActive={isVoiceActive}
-            isBotSpeaking={isBotSpeaking}
-            isMuted={isMuted}
-            sttText={sttText}
-          />
+      {/* Error toast */}
+      {error && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up">
+          <div className="rounded-lg bg-danger/10 border border-danger/20 px-4 py-2 text-sm text-danger backdrop-blur-sm">
+            {error}
+          </div>
         </div>
+      )}
 
-        {/* Voice controls */}
-        <div className="flex-shrink-0 flex justify-center gap-3 pb-4">
-          {!isVoiceActive ? (
-            <button
-              onClick={startVoice}
-              disabled={!isConnected}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white text-sm font-medium hover:from-indigo-600 hover:to-violet-700 transition-all disabled:opacity-50"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              </svg>
-              Start Voice
-            </button>
-          ) : (
-            <>
+      {/* Split-screen content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left panel: Character avatar + voice controls */}
+        <div className="w-1/2 flex flex-col items-center justify-center border-r border-border bg-gradient-to-b from-surface to-background relative">
+          {/* Subtle background decoration */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-indigo-600/5 rounded-full blur-3xl" />
+            <div className="absolute bottom-1/4 right-1/4 w-48 h-48 bg-violet-600/5 rounded-full blur-3xl" />
+          </div>
+
+          {/* Character */}
+          <div className="relative w-full max-w-sm aspect-[4/5] mx-auto">
+            <CharacterAvatar state={characterState} />
+          </div>
+
+          {/* State label */}
+          <div className="mt-2 text-xs text-muted capitalize tracking-wide">
+            {characterState === "idle" && !isVoiceActive && "Ready to chat"}
+            {characterState === "idle" && isVoiceActive && "Listening..."}
+            {characterState === "listening" && "Listening..."}
+            {characterState === "thinking" && "Thinking..."}
+            {characterState === "speaking" && "Speaking..."}
+            {characterState === "happy" && "Happy"}
+          </div>
+
+          {/* Voice controls */}
+          <div className="mt-6 flex justify-center gap-3">
+            {!isVoiceActive ? (
               <button
-                onClick={toggleMute}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all ${
-                  isMuted
-                    ? "bg-amber-600/20 text-amber-400 border border-amber-600/30"
-                    : "bg-surface-light text-foreground border border-border hover:bg-surface"
-                }`}
-              >
-                {isMuted ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="1" x2="23" y1="1" y2="23" />
-                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .78-.13 1.53-.36 2.24" />
-                  </svg>
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  </svg>
-                )}
-                {isMuted ? "Unmute" : "Mute"}
-              </button>
-              {isBotSpeaking && (
-                <button
-                  onClick={interruptBot}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-danger/20 text-danger border border-danger/30 text-sm font-medium hover:bg-danger/30 transition-all"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="6" y="6" width="12" height="12" rx="2" />
-                  </svg>
-                  Interrupt
-                </button>
-              )}
-              <button
-                onClick={stopVoice}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-surface-light text-danger border border-border text-sm font-medium hover:border-danger/50 transition-all"
+                onClick={startVoice}
+                disabled={!isConnected}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white text-sm font-medium hover:from-indigo-600 hover:to-violet-700 transition-all disabled:opacity-50"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 6 6 18M6 6l12 12" />
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                 </svg>
-                Stop Voice
+                Start Voice
               </button>
-            </>
+            ) : (
+              <>
+                <button
+                  onClick={toggleMute}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all ${
+                    isMuted
+                      ? "bg-amber-600/20 text-amber-400 border border-amber-600/30"
+                      : "bg-surface-light text-foreground border border-border hover:bg-surface"
+                  }`}
+                >
+                  {isMuted ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="1" x2="23" y1="1" y2="23" />
+                      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+                      <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .78-.13 1.53-.36 2.24" />
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    </svg>
+                  )}
+                  {isMuted ? "Unmute" : "Mute"}
+                </button>
+                {isBotSpeaking && (
+                  <button
+                    onClick={interruptBot}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-danger/20 text-danger border border-danger/30 text-sm font-medium hover:bg-danger/30 transition-all"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="6" y="6" width="12" height="12" rx="2" />
+                    </svg>
+                    Interrupt
+                  </button>
+                )}
+                <button
+                  onClick={stopVoice}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-surface-light text-danger border border-border text-sm font-medium hover:border-danger/50 transition-all"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                  Stop
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Live STT text */}
+          {sttText && (
+            <div className="mt-4 px-6 max-w-sm">
+              <p className="text-sm text-accent-light text-center italic truncate">
+                &ldquo;{sttText}&rdquo;
+              </p>
+            </div>
           )}
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 pb-4">
-          <div className="max-w-2xl mx-auto space-y-3">
-            {messages.length === 0 && (
-              <div className="text-center py-8 text-muted text-sm">
-                Send a message or start voice to begin chatting
-              </div>
-            )}
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`animate-fade-in-up flex ${
-                  msg.role === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                    msg.role === "user"
-                      ? "bg-accent text-white rounded-br-md"
-                      : "bg-surface-light border border-border rounded-bl-md"
-                  } ${!msg.isFinal && msg.role === "bot" ? "opacity-80" : ""}`}
-                >
-                  {msg.text}
-                  {!msg.isFinal && msg.role === "bot" && (
-                    <span className="inline-block w-1.5 h-4 bg-accent-light/60 ml-0.5 animate-pulse rounded-sm" />
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {/* Bot typing indicator when we have a non-final bot message or bot is speaking without text */}
-            {isBotSpeaking &&
-              !messages.some((m) => m.role === "bot" && !m.isFinal) && (
-                <div className="flex justify-start">
-                  <div className="bg-surface-light border border-border rounded-2xl rounded-bl-md">
-                    <TypingIndicator />
-                  </div>
+        {/* Right panel: Chat messages + text input */}
+        <div className="w-1/2 flex flex-col overflow-hidden">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            <div className="space-y-3">
+              {messages.length === 0 && (
+                <div className="text-center py-12 text-muted text-sm">
+                  Send a message or start voice to begin chatting
                 </div>
               )}
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`animate-fade-in-up flex ${
+                    msg.role === "user" ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                      msg.role === "user"
+                        ? "bg-accent text-white rounded-br-md"
+                        : "bg-surface-light border border-border rounded-bl-md"
+                    } ${!msg.isFinal && msg.role === "bot" ? "opacity-80" : ""}`}
+                  >
+                    {msg.text}
+                    {!msg.isFinal && msg.role === "bot" && (
+                      <span className="inline-block w-1.5 h-4 bg-accent-light/60 ml-0.5 animate-pulse rounded-sm" />
+                    )}
+                  </div>
+                </div>
+              ))}
 
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
+              {isBotSpeaking &&
+                !messages.some((m) => m.role === "bot" && !m.isFinal) && (
+                  <div className="flex justify-start">
+                    <div className="bg-surface-light border border-border rounded-2xl rounded-bl-md">
+                      <TypingIndicator />
+                    </div>
+                  </div>
+                )}
 
-        {/* Error toast */}
-        {error && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up">
-            <div className="rounded-lg bg-danger/10 border border-danger/20 px-4 py-2 text-sm text-danger backdrop-blur-sm">
-              {error}
+              <div ref={messagesEndRef} />
             </div>
           </div>
-        )}
 
-        {/* Text input */}
-        <div className="flex-shrink-0 p-4 border-t border-border bg-surface/50 backdrop-blur-sm">
-          <form
-            onSubmit={handleSendText}
-            className="max-w-2xl mx-auto flex gap-2"
-          >
-            <input
-              type="text"
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              placeholder="Type a message..."
-              className="flex-1 px-4 py-2.5 rounded-xl bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition placeholder:text-muted"
-              disabled={!isConnected}
-            />
-            <button
-              type="submit"
-              disabled={!isConnected || !textInput.trim()}
-              className="px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-light transition disabled:opacity-50 disabled:cursor-not-allowed"
+          {/* Text input */}
+          <div className="flex-shrink-0 p-4 border-t border-border bg-surface/50 backdrop-blur-sm">
+            <form
+              onSubmit={handleSendText}
+              className="flex gap-2"
             >
-              Send
-            </button>
-          </form>
+              <input
+                type="text"
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1 px-4 py-2.5 rounded-xl bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition placeholder:text-muted"
+                disabled={!isConnected}
+              />
+              <button
+                type="submit"
+                disabled={!isConnected || !textInput.trim()}
+                className="px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-light transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Send
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
