@@ -210,7 +210,10 @@ export function useEstuary() {
     setIsBotSpeaking(false);
   }, []);
 
+  const getClient = useCallback(() => clientRef.current, []);
+
   return {
+    getClient,
     connectionState,
     session,
     messages,

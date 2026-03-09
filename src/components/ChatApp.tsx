@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent } fro
 import { ConnectionState } from "@estuary-ai/sdk";
 import { useEstuary, type EstuaryConfig } from "@/hooks/useEstuary";
 import CharacterAvatar, { type CharacterState } from "./CharacterAvatar";
+import MemoryPanel from "./MemoryPanel";
 
 const DEFAULT_SERVER_URL = "https://api.estuary-ai.com";
 
@@ -67,6 +68,7 @@ function deriveCharacterState(
 
 export default function ChatApp() {
   const {
+    getClient,
     connectionState,
     session,
     messages,
@@ -95,9 +97,51 @@ export default function ChatApp() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [isFromLink, setIsFromLink] = useState(false);
+  const [rightPanel, setRightPanel] = useState<"chat" | "memory">("chat");
+  const [splitPct, setSplitPct] = useState(50); // left panel width %
+  const isDraggingRef = useRef(false);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
   const autoConnectRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isConnected = connectionState === ConnectionState.Connected;
+
+  // Drag-to-resize handlers
+  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    const handleMove = (clientX: number) => {
+      if (!isDraggingRef.current || !splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const pct = ((clientX - rect.left) / rect.width) * 100;
+      setSplitPct(Math.min(80, Math.max(20, pct)));
+    };
+
+    const onMouseMove = (e: MouseEvent) => handleMove(e.clientX);
+    const onTouchMove = (e: TouchEvent) => handleMove(e.touches[0].clientX);
+    const onEnd = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("touchmove", onTouchMove);
+    window.addEventListener("mouseup", onEnd);
+    window.addEventListener("touchend", onEnd);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("mouseup", onEnd);
+      window.removeEventListener("touchend", onEnd);
+    };
+  }, []);
 
   // Derive character state from conversation
   const hasPendingBotMessage = useMemo(
@@ -301,6 +345,28 @@ export default function ChatApp() {
         <div className="flex items-center gap-3">
           <ConnectionBadge state={connectionState} />
           <button
+            onClick={() => setRightPanel(rightPanel === "memory" ? "chat" : "memory")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition ${
+              rightPanel === "memory"
+                ? "border-accent/50 text-accent-light bg-accent/10"
+                : "border-border text-muted hover:text-accent-light hover:border-accent/50"
+            }`}
+            title={rightPanel === "memory" ? "Back to Chat" : "Memory Map"}
+          >
+            {rightPanel === "memory" ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+                <path d="M2 12h20" />
+              </svg>
+            )}
+            {rightPanel === "memory" ? "Chat" : "Memory"}
+          </button>
+          <button
             onClick={generateShareLink}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border text-muted hover:text-accent-light hover:border-accent/50 transition"
             title="Copy invite link"
@@ -356,9 +422,9 @@ export default function ChatApp() {
       )}
 
       {/* Split-screen content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
         {/* Left panel: Character avatar + voice controls */}
-        <div className="w-1/2 flex flex-col items-center justify-center border-r border-border bg-gradient-to-b from-surface to-background relative">
+        <div style={{ width: `${splitPct}%` }} className="flex-shrink-0 flex flex-col items-center justify-center bg-gradient-to-b from-surface to-background relative">
           {/* Subtle background decoration */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-indigo-600/5 rounded-full blur-3xl" />
@@ -452,74 +518,90 @@ export default function ChatApp() {
           )}
         </div>
 
-        {/* Right panel: Chat messages + text input */}
-        <div className="w-1/2 flex flex-col overflow-hidden">
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4">
-            <div className="space-y-3">
-              {messages.length === 0 && (
-                <div className="text-center py-12 text-muted text-sm">
-                  Send a message or start voice to begin chatting
-                </div>
-              )}
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`animate-fade-in-up flex ${
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-accent text-white rounded-br-md"
-                        : "bg-surface-light border border-border rounded-bl-md"
-                    } ${!msg.isFinal && msg.role === "bot" ? "opacity-80" : ""}`}
-                  >
-                    {msg.text}
-                    {!msg.isFinal && msg.role === "bot" && (
-                      <span className="inline-block w-1.5 h-4 bg-accent-light/60 ml-0.5 animate-pulse rounded-sm" />
-                    )}
-                  </div>
-                </div>
-              ))}
+        {/* Drag handle */}
+        <div
+          onMouseDown={handleDragStart}
+          onTouchStart={handleDragStart}
+          className="w-1.5 flex-shrink-0 cursor-col-resize relative group"
+        >
+          <div className="absolute inset-0 bg-border group-hover:bg-accent/50 transition-colors" />
+          <div className="absolute inset-y-0 -left-1 -right-1" />
+        </div>
 
-              {isBotSpeaking &&
-                !messages.some((m) => m.role === "bot" && !m.isFinal) && (
-                  <div className="flex justify-start">
-                    <div className="bg-surface-light border border-border rounded-2xl rounded-bl-md">
-                      <TypingIndicator />
+        {/* Right panel: Chat or Memory Map */}
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          {rightPanel === "chat" ? (
+            <>
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto px-4 py-4">
+                <div className="space-y-3">
+                  {messages.length === 0 && (
+                    <div className="text-center py-12 text-muted text-sm">
+                      Send a message or start voice to begin chatting
                     </div>
-                  </div>
-                )}
+                  )}
+                  {messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`animate-fade-in-up flex ${
+                        msg.role === "user" ? "justify-end" : "justify-start"
+                      }`}
+                    >
+                      <div
+                        className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                          msg.role === "user"
+                            ? "bg-accent text-white rounded-br-md"
+                            : "bg-surface-light border border-border rounded-bl-md"
+                        } ${!msg.isFinal && msg.role === "bot" ? "opacity-80" : ""}`}
+                      >
+                        {msg.text}
+                        {!msg.isFinal && msg.role === "bot" && (
+                          <span className="inline-block w-1.5 h-4 bg-accent-light/60 ml-0.5 animate-pulse rounded-sm" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
 
-              <div ref={messagesEndRef} />
-            </div>
-          </div>
+                  {isBotSpeaking &&
+                    !messages.some((m) => m.role === "bot" && !m.isFinal) && (
+                      <div className="flex justify-start">
+                        <div className="bg-surface-light border border-border rounded-2xl rounded-bl-md">
+                          <TypingIndicator />
+                        </div>
+                      </div>
+                    )}
 
-          {/* Text input */}
-          <div className="flex-shrink-0 p-4 border-t border-border bg-surface/50 backdrop-blur-sm">
-            <form
-              onSubmit={handleSendText}
-              className="flex gap-2"
-            >
-              <input
-                type="text"
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                placeholder="Type a message..."
-                className="flex-1 px-4 py-2.5 rounded-xl bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition placeholder:text-muted"
-                disabled={!isConnected}
-              />
-              <button
-                type="submit"
-                disabled={!isConnected || !textInput.trim()}
-                className="px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-light transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Send
-              </button>
-            </form>
-          </div>
+                  <div ref={messagesEndRef} />
+                </div>
+              </div>
+
+              {/* Text input */}
+              <div className="flex-shrink-0 p-4 border-t border-border bg-surface/50 backdrop-blur-sm">
+                <form
+                  onSubmit={handleSendText}
+                  className="flex gap-2"
+                >
+                  <input
+                    type="text"
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    placeholder="Type a message..."
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition placeholder:text-muted"
+                    disabled={!isConnected}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!isConnected || !textInput.trim()}
+                    className="px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-light transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Send
+                  </button>
+                </form>
+              </div>
+            </>
+          ) : (
+            <MemoryPanel getClient={getClient} />
+          )}
         </div>
       </div>
     </div>
