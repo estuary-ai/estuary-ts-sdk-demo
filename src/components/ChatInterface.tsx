@@ -1,29 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { ConnectionState } from "@estuary-ai/sdk";
 import { useEstuary, type EstuaryConfig } from "@/hooks/useEstuary";
 import CharacterAvatar, { type CharacterState } from "./CharacterAvatar";
 import MemoryPanel from "./MemoryPanel";
 
-const DEFAULT_SERVER_URL = "https://api.estuary-ai.com";
-
 function encodeConfig(config: EstuaryConfig): string {
   return btoa(JSON.stringify(config));
-}
-
-function decodeConfig(hash: string): EstuaryConfig | null {
-  try {
-    const raw = hash.startsWith("#") ? hash.slice(1) : hash;
-    if (!raw) return null;
-    const parsed = JSON.parse(atob(raw));
-    if (parsed.serverUrl && parsed.apiKey && parsed.characterId && parsed.playerId) {
-      return parsed as EstuaryConfig;
-    }
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 function ConnectionBadge({ state }: { state: ConnectionState }) {
@@ -66,7 +51,8 @@ function deriveCharacterState(
   return "idle";
 }
 
-export default function ChatApp() {
+export default function ChatInterface() {
+  const router = useRouter();
   const {
     getClient,
     connectionState,
@@ -86,26 +72,40 @@ export default function ChatApp() {
     interruptBot,
   } = useEstuary();
 
-  const [config, setConfig] = useState<EstuaryConfig>({
-    serverUrl: DEFAULT_SERVER_URL,
-    apiKey: "",
-    characterId: "",
-    playerId: `demo-user-${Math.random().toString(36).slice(2, 8)}`,
-  });
-
+  const [config, setConfig] = useState<EstuaryConfig | null>(null);
   const [textInput, setTextInput] = useState("");
-  const [isConnecting, setIsConnecting] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
-  const [isFromLink, setIsFromLink] = useState(false);
   const [rightPanel, setRightPanel] = useState<"chat" | "memory">("chat");
-  const [splitPct, setSplitPct] = useState(50); // left panel width %
+  const [splitPct, setSplitPct] = useState(50);
   const isDraggingRef = useRef(false);
   const splitContainerRef = useRef<HTMLDivElement>(null);
-  const autoConnectRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const connectAttemptedRef = useRef(false);
   const isConnected = connectionState === ConnectionState.Connected;
 
-  // Drag-to-resize handlers
+  // Read config from sessionStorage and auto-connect
+  useEffect(() => {
+    const saved = sessionStorage.getItem("estuary-config");
+    if (!saved) {
+      router.replace("/connect");
+      return;
+    }
+    try {
+      const parsed = JSON.parse(saved) as EstuaryConfig;
+      setConfig(parsed);
+    } catch {
+      router.replace("/connect");
+    }
+  }, [router]);
+
+  useEffect(() => {
+    if (config && !connectAttemptedRef.current) {
+      connectAttemptedRef.current = true;
+      connect(config).catch(() => {});
+    }
+  }, [config, connect]);
+
+  // Drag-to-resize
   const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     isDraggingRef.current = true;
@@ -143,13 +143,12 @@ export default function ChatApp() {
     };
   }, []);
 
-  // Derive character state from conversation
+  // Derive character state
   const hasPendingBotMessage = useMemo(
     () => messages.some((m) => m.role === "bot" && !m.isFinal),
     [messages]
   );
 
-  // Detect "happy" from final bot messages containing positive sentiment words
   const lastBotMessage = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === "bot" && messages[i].isFinal) return messages[i];
@@ -166,47 +165,18 @@ export default function ChatApp() {
 
   const characterState: CharacterState = useMemo(() => {
     const base = deriveCharacterState(isVoiceActive, isBotSpeaking, sttText, hasPendingBotMessage);
-    // Override to "happy" briefly after a positive bot response (when idle)
     if (base === "idle" && isHappyResponse) return "happy";
     return base;
   }, [isVoiceActive, isBotSpeaking, sttText, hasPendingBotMessage, isHappyResponse]);
-
-  // Parse shared config from URL hash on mount
-  useEffect(() => {
-    const shared = decodeConfig(window.location.hash);
-    if (shared) {
-      setConfig(shared);
-      setIsFromLink(true);
-      autoConnectRef.current = true;
-    }
-  }, []);
-
-  // Auto-connect when loaded from a shared link
-  useEffect(() => {
-    if (autoConnectRef.current && config.apiKey) {
-      autoConnectRef.current = false;
-      setIsConnecting(true);
-      connect(config)
-        .catch(() => {})
-        .finally(() => setIsConnecting(false));
-    }
-  }, [config, connect]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleConnect = async (e: FormEvent) => {
-    e.preventDefault();
-    setIsConnecting(true);
-    try {
-      await connect(config);
-    } catch {
-      // error is set in the hook
-    } finally {
-      setIsConnecting(false);
-    }
-  };
+  const handleDisconnect = useCallback(() => {
+    disconnect();
+    router.push("/connect");
+  }, [disconnect, router]);
 
   const handleSendText = (e: FormEvent) => {
     e.preventDefault();
@@ -216,112 +186,23 @@ export default function ChatApp() {
   };
 
   const generateShareLink = useCallback(() => {
-    const url = new URL(window.location.href.split("#")[0]);
+    if (!config) return;
+    const url = new URL(window.location.origin + "/connect");
     url.hash = encodeConfig(config);
     const link = url.toString();
     setShareLink(link);
     navigator.clipboard.writeText(link).catch(() => {});
   }, [config]);
 
-  // --- Setup Screen ---
-  if (!isConnected && connectionState !== ConnectionState.Connecting && connectionState !== ConnectionState.Reconnecting) {
+  // Loading state
+  if (!config) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        {/* Background gradient blobs */}
-        <div className="fixed inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-40 -left-40 w-80 h-80 bg-indigo-600/10 rounded-full blur-3xl" />
-          <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl" />
-        </div>
-
-        <div className="relative w-full max-w-md">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 mb-4">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" x2="12" y1="19" y2="23" />
-                <line x1="8" x2="16" y1="23" y2="23" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">Estuary Voice Chat</h1>
-            <p className="text-sm text-muted mt-1">
-              {isFromLink ? "Joining shared session..." : "Real-time AI conversation demo"}
-            </p>
-          </div>
-
-          <form onSubmit={handleConnect} className="space-y-4">
-            <div className="rounded-xl border border-border bg-surface p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1.5">Server URL</label>
-                <input
-                  type="url"
-                  value={config.serverUrl}
-                  onChange={(e) => setConfig({ ...config, serverUrl: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition"
-                  placeholder="https://api.estuary-ai.com"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1.5">API Key</label>
-                <input
-                  type="password"
-                  value={config.apiKey}
-                  onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition font-mono"
-                  placeholder="est_..."
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1.5">Character ID</label>
-                <input
-                  type="text"
-                  value={config.characterId}
-                  onChange={(e) => setConfig({ ...config, characterId: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition font-mono"
-                  placeholder="uuid-of-your-character"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1.5">Player ID</label>
-                <input
-                  type="text"
-                  value={config.playerId}
-                  onChange={(e) => setConfig({ ...config, playerId: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition font-mono"
-                  placeholder="your-player-id"
-                  required
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="rounded-lg bg-danger/10 border border-danger/20 px-4 py-2.5 text-sm text-danger">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isConnecting}
-              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-medium text-sm hover:from-indigo-600 hover:to-violet-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isConnecting ? "Connecting..." : "Connect"}
-            </button>
-          </form>
-
-          <p className="text-xs text-center text-muted mt-6">
-            Powered by{" "}
-            <span className="text-accent-light font-medium">@estuary-ai/sdk</span>
-          </p>
-        </div>
+      <div className="h-screen flex items-center justify-center">
+        <p className="text-muted text-sm">Loading...</p>
       </div>
     );
   }
 
-  // --- Split-Screen Chat + Character ---
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
@@ -381,7 +262,7 @@ export default function ChatApp() {
             Share
           </button>
           <button
-            onClick={disconnect}
+            onClick={handleDisconnect}
             className="px-3 py-1.5 text-xs rounded-lg border border-border text-muted hover:text-danger hover:border-danger/50 transition"
           >
             Disconnect
@@ -423,20 +304,17 @@ export default function ChatApp() {
 
       {/* Split-screen content */}
       <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
-        {/* Left panel: Character avatar + voice controls */}
+        {/* Left panel: Character */}
         <div style={{ width: `${splitPct}%` }} className="flex-shrink-0 flex flex-col items-center justify-center bg-gradient-to-b from-surface to-background relative">
-          {/* Subtle background decoration */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-indigo-600/5 rounded-full blur-3xl" />
             <div className="absolute bottom-1/4 right-1/4 w-48 h-48 bg-violet-600/5 rounded-full blur-3xl" />
           </div>
 
-          {/* Character */}
           <div className="relative w-full max-w-sm aspect-[4/5] mx-auto">
             <CharacterAvatar state={characterState} />
           </div>
 
-          {/* State label */}
           <div className="mt-2 text-xs text-muted capitalize tracking-wide">
             {characterState === "idle" && !isVoiceActive && "Ready to chat"}
             {characterState === "idle" && isVoiceActive && "Listening..."}
@@ -508,7 +386,6 @@ export default function ChatApp() {
             )}
           </div>
 
-          {/* Live STT text */}
           {sttText && (
             <div className="mt-4 px-6 max-w-sm">
               <p className="text-sm text-accent-light text-center italic truncate">
@@ -528,11 +405,10 @@ export default function ChatApp() {
           <div className="absolute inset-y-0 -left-1 -right-1" />
         </div>
 
-        {/* Right panel: Chat or Memory Map */}
+        {/* Right panel: Chat or Memory */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {rightPanel === "chat" ? (
             <>
-              {/* Messages */}
               <div className="flex-1 overflow-y-auto px-4 py-4">
                 <div className="space-y-3">
                   {messages.length === 0 && (
@@ -575,12 +451,8 @@ export default function ChatApp() {
                 </div>
               </div>
 
-              {/* Text input */}
               <div className="flex-shrink-0 p-4 border-t border-border bg-surface/50 backdrop-blur-sm">
-                <form
-                  onSubmit={handleSendText}
-                  className="flex gap-2"
-                >
+                <form onSubmit={handleSendText} className="flex gap-2">
                   <input
                     type="text"
                     value={textInput}
