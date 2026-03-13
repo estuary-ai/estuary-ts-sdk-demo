@@ -4,13 +4,10 @@ import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent } fro
 import { useRouter } from "next/navigation";
 import { ConnectionState } from "@estuary-ai/sdk";
 import { useEstuary, type EstuaryConfig, type EstuarySettings, DEFAULT_SETTINGS } from "@/hooks/useEstuary";
+import { encrypt } from "@/lib/crypto";
 import CharacterAvatar, { type CharacterState } from "./CharacterAvatar";
 import MemoryPanel from "./MemoryPanel";
 import SettingsDrawer from "./SettingsDrawer";
-
-function encodeConfig(config: EstuaryConfig): string {
-  return btoa(JSON.stringify(config));
-}
 
 function ConnectionBadge({ state }: { state: ConnectionState }) {
   const config: Record<string, { color: string; label: string }> = {
@@ -79,6 +76,11 @@ export default function ChatInterface() {
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<EstuarySettings>(DEFAULT_SETTINGS);
   const [copiedField, setCopiedField] = useState<"url" | "hash" | null>(null);
+  const [sharePassphrase, setSharePassphrase] = useState("");
+  const [shareHash, setShareHash] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
+  const [isEncrypting, setIsEncrypting] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const [rightPanel, setRightPanel] = useState<"chat" | "memory">("chat");
   const [splitPct, setSplitPct] = useState(50);
   const isDraggingRef = useRef(false);
@@ -211,8 +213,20 @@ export default function ChatInterface() {
     setTextInput("");
   };
 
-  const shareHash = config ? encodeConfig(config) : "";
-  const shareUrl = config ? `${window.location.origin}/connect#${shareHash}` : "";
+  const generateShareLink = useCallback(async () => {
+    if (!config || !sharePassphrase.trim()) return;
+    setIsEncrypting(true);
+    setShareError(null);
+    try {
+      const hash = await encrypt(JSON.stringify(config), sharePassphrase.trim());
+      setShareHash(hash);
+      setShareUrl(`${window.location.origin}/connect#${hash}`);
+    } catch {
+      setShareError("Encryption failed. Please try again.");
+    } finally {
+      setIsEncrypting(false);
+    }
+  }, [config, sharePassphrase]);
 
   const copyToClipboard = useCallback((text: string, field: "url" | "hash") => {
     if (navigator.clipboard?.writeText) {
@@ -357,48 +371,93 @@ export default function ChatInterface() {
             </div>
 
             <p className="text-[11px] text-muted leading-relaxed">
-              Share the URL or hash so others can connect to this character.
+              Your session config (including API key) is encrypted with AES-256-GCM.
+              Share the passphrase separately from the link.
             </p>
 
-            {/* URL row */}
+            {/* Passphrase input */}
             <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted uppercase tracking-wider">Full URL</label>
+              <label className="text-[10px] font-medium text-muted uppercase tracking-wider">Passphrase</label>
               <div className="flex gap-2 items-center">
-                <div className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-surface-light border border-border text-[11px] font-mono text-muted truncate select-all" title={shareUrl}>
-                  {shareUrl}
-                </div>
+                <input
+                  type="password"
+                  value={sharePassphrase}
+                  onChange={(e) => {
+                    setSharePassphrase(e.target.value);
+                    setShareHash("");
+                    setShareUrl("");
+                    setShareError(null);
+                  }}
+                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-surface-light border border-border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition"
+                  placeholder="Enter a passphrase..."
+                />
                 <button
-                  onClick={() => copyToClipboard(shareUrl, "url")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition shrink-0 ${
-                    copiedField === "url"
-                      ? "bg-success/20 text-success border border-success/30"
-                      : "bg-accent text-white hover:bg-accent-light"
-                  }`}
+                  onClick={generateShareLink}
+                  disabled={!sharePassphrase.trim() || isEncrypting}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition shrink-0 bg-accent text-white hover:bg-accent-light disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {copiedField === "url" ? "Copied!" : "Copy"}
+                  {isEncrypting ? "Encrypting..." : "Generate"}
                 </button>
               </div>
+              {shareError && <p className="text-[11px] text-danger">{shareError}</p>}
             </div>
 
-            {/* Hash row */}
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted uppercase tracking-wider">Session Hash</label>
-              <div className="flex gap-2 items-center">
-                <div className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-surface-light border border-border text-[11px] font-mono text-muted truncate select-all" title={shareHash}>
-                  {shareHash}
+            {/* Encrypted URL row */}
+            {shareUrl && (
+              <div className="space-y-1">
+                <label className="text-[10px] font-medium text-muted uppercase tracking-wider">Encrypted URL</label>
+                <div className="flex gap-2 items-center">
+                  <div className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-surface-light border border-border text-[11px] font-mono text-muted truncate select-all" title={shareUrl}>
+                    {shareUrl}
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(shareUrl, "url")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition shrink-0 ${
+                      copiedField === "url"
+                        ? "bg-success/20 text-success border border-success/30"
+                        : "bg-accent text-white hover:bg-accent-light"
+                    }`}
+                  >
+                    {copiedField === "url" ? "Copied!" : "Copy"}
+                  </button>
                 </div>
-                <button
-                  onClick={() => copyToClipboard(shareHash, "hash")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition shrink-0 ${
-                    copiedField === "hash"
-                      ? "bg-success/20 text-success border border-success/30"
-                      : "bg-accent text-white hover:bg-accent-light"
-                  }`}
-                >
-                  {copiedField === "hash" ? "Copied!" : "Copy"}
-                </button>
               </div>
-            </div>
+            )}
+
+            {/* Encrypted hash row */}
+            {shareHash && (
+              <div className="space-y-1">
+                <label className="text-[10px] font-medium text-muted uppercase tracking-wider">Encrypted Hash</label>
+                <div className="flex gap-2 items-center">
+                  <div className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-surface-light border border-border text-[11px] font-mono text-muted truncate select-all" title={shareHash}>
+                    {shareHash}
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(shareHash, "hash")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition shrink-0 ${
+                      copiedField === "hash"
+                        ? "bg-success/20 text-success border border-success/30"
+                        : "bg-accent text-white hover:bg-accent-light"
+                    }`}
+                  >
+                    {copiedField === "hash" ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {shareUrl && (
+              <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-400 shrink-0 mt-0.5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" x2="12" y1="9" y2="13" />
+                  <line x1="12" x2="12.01" y1="17" y2="17" />
+                </svg>
+                <p className="text-[11px] text-amber-300 leading-relaxed">
+                  Share the passphrase through a different channel than the link (e.g. link via chat, passphrase via text).
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
