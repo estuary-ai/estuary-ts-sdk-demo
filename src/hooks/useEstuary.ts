@@ -58,6 +58,7 @@ export function useEstuary() {
   const [isMuted, setIsMuted] = useState(false);
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastSttTextRef = useRef<string>("");
 
   const cleanup = useCallback(() => {
     if (clientRef.current) {
@@ -107,6 +108,10 @@ export function useEstuary() {
       });
 
       client.on("botResponse", (response: BotResponse) => {
+        // Reset STT dedup so user can repeat the same phrase after bot responds
+        if (response.isFinal) {
+          lastSttTextRef.current = "";
+        }
         setMessages((prev) => {
           const existing = prev.findIndex(
             (m) => m.id === response.messageId && m.role === "bot"
@@ -126,8 +131,8 @@ export function useEstuary() {
             };
             return updated;
           }
-          // Skip creating a bubble for empty first chunks
-          if (!response.text && !response.isFinal) {
+          // Skip creating a bubble for empty chunks (including empty final messages)
+          if (!response.text) {
             return prev;
           }
           return [
@@ -146,23 +151,22 @@ export function useEstuary() {
       client.on("sttResponse", (response: SttResponse) => {
         if (response.isFinal) {
           if (response.text.trim()) {
-            setMessages((prev) => {
-              // Deduplicate: don't add if the last user message has the same text
-              const lastUserMsg = [...prev].reverse().find((m) => m.role === "user");
-              if (lastUserMsg && lastUserMsg.text === response.text) {
-                return prev;
-              }
-              return [
-                ...prev,
-                {
-                  id: `user-${Date.now()}`,
-                  role: "user",
-                  text: response.text,
-                  timestamp: Date.now(),
-                  isFinal: true,
-                },
-              ];
-            });
+            // Deduplicate using ref to avoid React state batching race condition
+            if (lastSttTextRef.current === response.text) {
+              setSttText("");
+              return;
+            }
+            lastSttTextRef.current = response.text;
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `user-${Date.now()}`,
+                role: "user",
+                text: response.text,
+                timestamp: Date.now(),
+                isFinal: true,
+              },
+            ]);
           }
           setSttText("");
         } else {
