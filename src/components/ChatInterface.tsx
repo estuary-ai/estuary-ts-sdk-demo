@@ -51,6 +51,7 @@ function deriveCharacterState(
 
 export default function ChatInterface() {
   const router = useRouter();
+  const [settings, setSettings] = useState<EstuarySettings>(DEFAULT_SETTINGS);
   const {
     getClient,
     connectionState,
@@ -68,13 +69,13 @@ export default function ChatInterface() {
     stopVoice,
     toggleMute,
     interruptBot,
+    setSuppressMicDuringPlayback,
   } = useEstuary();
 
   const [config, setConfig] = useState<EstuaryConfig | null>(null);
   const [textInput, setTextInput] = useState("");
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState<EstuarySettings>(DEFAULT_SETTINGS);
   const [copiedField, setCopiedField] = useState<"url" | "hash" | null>(null);
   const [shareHash, setShareHash] = useState("");
   const [shareUrl, setShareUrl] = useState("");
@@ -111,6 +112,11 @@ export default function ChatInterface() {
       connect(config, settings).catch(() => {});
     }
   }, [config, connect, settings]);
+
+  // Sync suppressMicDuringPlayback to the live client (no reconnect needed)
+  useEffect(() => {
+    setSuppressMicDuringPlayback(settings.suppressMicDuringPlayback);
+  }, [settings.suppressMicDuringPlayback, setSuppressMicDuringPlayback]);
 
   // Drag-to-resize
   const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -511,28 +517,37 @@ export default function ChatInterface() {
               </button>
             ) : (
               <>
-                <button
-                  onClick={toggleMute}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all ${
-                    isMuted
-                      ? "bg-amber-600/20 text-amber-400 border border-amber-600/30"
-                      : "bg-surface-light text-foreground border border-border hover:bg-surface"
-                  }`}
-                >
-                  {isMuted ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="1" x2="23" y1="1" y2="23" />
-                      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-                      <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .78-.13 1.53-.36 2.24" />
-                    </svg>
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    </svg>
-                  )}
-                  {isMuted ? "Unmute" : "Mute"}
-                </button>
+                {(() => {
+                  const isSuppressed = isBotSpeaking && settings.suppressMicDuringPlayback;
+                  const showMuted = isMuted || isSuppressed;
+                  return (
+                    <button
+                      onClick={toggleMute}
+                      disabled={isSuppressed}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all ${
+                        isSuppressed
+                          ? "bg-violet-600/20 text-violet-400 border border-violet-600/30 cursor-not-allowed opacity-75"
+                          : showMuted
+                            ? "bg-amber-600/20 text-amber-400 border border-amber-600/30"
+                            : "bg-surface-light text-foreground border border-border hover:bg-surface"
+                      }`}
+                    >
+                      {showMuted ? (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="1" x2="23" y1="1" y2="23" />
+                          <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+                          <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .78-.13 1.53-.36 2.24" />
+                        </svg>
+                      ) : (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        </svg>
+                      )}
+                      {isSuppressed ? "Auto-muted" : isMuted ? "Unmute" : "Mute"}
+                    </button>
+                  );
+                })()}
                 {isBotSpeaking && (
                   <button
                     onClick={interruptBot}
@@ -610,7 +625,8 @@ export default function ChatInterface() {
                   ))}
 
                   {isVoiceActive && isBotSpeaking &&
-                    !messages.some((m) => m.role === "bot" && !m.isFinal) && (
+                    !messages.some((m) => m.role === "bot" && !m.isFinal) &&
+                    messages[messages.length - 1]?.role !== "bot" && (
                       <div className="flex justify-start">
                         <div className="bg-surface-light border border-border rounded-2xl rounded-bl-md">
                           <TypingIndicator />

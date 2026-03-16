@@ -9,7 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@estuary-ai/sdk": "^0.1.22",
+    "@estuary-ai/sdk": "file:../estuary-product/estuary-ts-sdk",
     "@rive-app/react-canvas": "^4.27.0",
     "@tsparticles/react": "^3.0.0",
     "@tsparticles/slim": "^3.9.1",

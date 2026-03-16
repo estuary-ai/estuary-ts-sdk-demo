@@ -258,6 +258,13 @@ export function useEstuary() {
     setIsBotSpeaking(false);
   }, []);
 
+  /** Update suppressMicDuringPlayback on the live client (no reconnect needed) */
+  const setSuppressMicDuringPlayback = useCallback((enabled: boolean) => {
+    if (clientRef.current) {
+      clientRef.current.suppressMicDuringPlayback = enabled;
+    }
+  }, []);
+
   const getClient = useCallback(() => clientRef.current, []);
 
   return {
@@ -277,5 +284,6 @@ export function useEstuary() {
     stopVoice,
     toggleMute,
     interruptBot,
+    setSuppressMicDuringPlayback,
   };
 }
