@@ -65,6 +65,7 @@ export default function ChatInterface() {
     isVoiceActive,
     isMuted,
     isBotSpeaking,
+    botAudioLevel,
     error,
     connect,
     disconnect,
@@ -130,15 +131,19 @@ export default function ChatInterface() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.id) {
+          // Resolve relative backend paths (e.g. /static/agent_models/...)
+          // to full URLs so the proxy and Three.js loaders can fetch them.
+          const resolve = (u: string | null) =>
+            u && u.startsWith("/") ? `${config.serverUrl}${u}` : u;
           setCharacterInfo({
             id: data.id,
             name: data.name ?? "",
             tagline: data.tagline ?? null,
-            avatar: data.avatar ?? null,
-            modelUrl: data.modelUrl ?? null,
-            modelPreviewUrl: data.modelPreviewUrl ?? null,
+            avatar: resolve(data.avatar ?? null),
+            modelUrl: resolve(data.modelUrl ?? null),
+            modelPreviewUrl: resolve(data.modelPreviewUrl ?? null),
             modelStatus: data.modelStatus ?? null,
-            sourceImageUrl: data.sourceImageUrl ?? null,
+            sourceImageUrl: resolve(data.sourceImageUrl ?? null),
           });
         }
       })
@@ -592,6 +597,7 @@ export default function ChatInterface() {
               modelStatus={characterInfo?.modelStatus ?? null}
               avatarUrl={characterInfo?.avatar ?? null}
               state={characterState as "idle" | "listening" | "thinking" | "speaking" | "happy"}
+              audioLevel={botAudioLevel}
             />
           </div>
 

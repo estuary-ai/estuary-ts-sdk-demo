@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const ALLOWED_HOSTS = ["estuary-public.s3.us-west-1.amazonaws.com"];
-const ALLOWED_PATH_PREFIXES = ["/agent_models/", "/agent_images/"];
+const ALLOWED_HOSTS = ["estuary-public.s3.us-west-1.amazonaws.com", "localhost"];
+const ALLOWED_PATH_PREFIXES = ["/agent_models/", "/agent_images/", "/static/agent_models/", "/static/agent_images/"];
 
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");

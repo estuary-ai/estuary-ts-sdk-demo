@@ -35,12 +35,15 @@ interface CharacterViewerProps {
 
 interface GLBModelProps {
   url: string;
-  isSpeaking: boolean;
+  state: ViewerState;
   isPreview: boolean;
   audioLevel: number;
 }
 
-function GLBModel({ url, isSpeaking, isPreview, audioLevel }: GLBModelProps) {
+function GLBModel({ url, state, isPreview, audioLevel }: GLBModelProps) {
+  const isSpeaking = state === "speaking";
+  const isListening = state === "listening";
+  const isThinking = state === "thinking";
   const { scene } = useGLTF(url);
   const groupRef = useRef<THREE.Group>(null);
   const scaleRef = useRef(1);
@@ -88,7 +91,7 @@ function GLBModel({ url, isSpeaking, isPreview, audioLevel }: GLBModelProps) {
     return { model: clone, glowMaterials: glowMats };
   }, [scene]);
 
-  useFrame((state, delta) => {
+  useFrame((frameState, delta) => {
     if (!groupRef.current) return;
 
     const smoothing = 1 - Math.exp(-delta * 7.5);
@@ -97,20 +100,37 @@ function GLBModel({ url, isSpeaking, isPreview, audioLevel }: GLBModelProps) {
     let targetGlow = 0;
 
     if (isPreview) {
-      const previewWave = (Math.sin(state.clock.elapsedTime * 2.2) + 1) * 0.5;
+      const previewWave = (Math.sin(frameState.clock.elapsedTime * 2.2) + 1) * 0.5;
       targetScale = 1 + previewWave * 0.035;
       targetGlow = 0.12 + previewWave * 0.06;
     } else if (isSpeaking) {
-      // Smooth the audio level to avoid jitter
-      audioLevelRef.current = THREE.MathUtils.lerp(audioLevelRef.current, audioLevel, smoothing);
+      // Fast attack / moderate release for mouth-sync feel
+      const attack = 1 - Math.exp(-delta * 18);   // ~55ms to peak
+      const release = 1 - Math.exp(-delta * 10);   // ~100ms decay
+      const alpha = audioLevel > audioLevelRef.current ? attack : release;
+      audioLevelRef.current = THREE.MathUtils.lerp(audioLevelRef.current, audioLevel, alpha);
       const level = audioLevelRef.current;
-      // Base animation (always visible) + audio-reactive boost
-      const primaryWave = (Math.sin(state.clock.elapsedTime * 2.6 - Math.PI / 2) + 1) * 0.5;
-      const secondaryWave = (Math.sin(state.clock.elapsedTime * 5.2 + 0.6) + 1) * 0.5;
-      // Baseline always present; audio level amplifies it
-      targetScale = 1.01 + primaryWave * 0.02 + level * 0.03;
-      targetYOffset = primaryWave * 0.04 + level * 0.06;
-      targetGlow = 0.05 + primaryWave * 0.08 + level * 0.17;
+      // Subtle base pulse + direct audio-reactive glow
+      const pulse = (Math.sin(frameState.clock.elapsedTime * 3.0) + 1) * 0.5;
+      targetScale = 1.005 + level * 0.045;
+      targetYOffset = level * 0.07;
+      targetGlow = 0.01 + pulse * 0.015 + level * 0.04;
+    } else if (isListening) {
+      // Gentle breathing — character is alive and attentive
+      const t = frameState.clock.elapsedTime;
+      const breath = (Math.sin(t * 1.4) + 1) * 0.5;
+      targetScale = 1 + breath * 0.012;
+      targetYOffset = breath * 0.015;
+      targetGlow = 0.015 + (Math.sin(t * 1.8) + 1) * 0.5 * 0.01;
+      audioLevelRef.current = THREE.MathUtils.lerp(audioLevelRef.current, 0, smoothing);
+    } else if (isThinking) {
+      // Slightly faster pulse — processing
+      const t = frameState.clock.elapsedTime;
+      const pulse = (Math.sin(t * 2.5) + 1) * 0.5;
+      targetScale = 1 + pulse * 0.015;
+      targetYOffset = pulse * 0.01;
+      targetGlow = 0.02 + pulse * 0.015;
+      audioLevelRef.current = THREE.MathUtils.lerp(audioLevelRef.current, 0, smoothing);
     } else {
       // Decay audio level smoothly when not speaking
       audioLevelRef.current = THREE.MathUtils.lerp(audioLevelRef.current, 0, smoothing);
@@ -267,9 +287,14 @@ export default function CharacterViewer({
   // Show loading when model is being fetched or generating
   const showLoading = !hasModel && (isGenerating || isPreviewReady);
 
+  const isListeningState = state === "listening";
+  const isThinkingState = state === "thinking";
+  const isVoiceSession = state !== "idle" && state !== "happy";
   const containerClass = [
     "character-viewer",
     isSpeaking && "character-viewer--speaking",
+    isListeningState && "character-viewer--listening",
+    isThinkingState && "character-viewer--thinking",
   ].filter(Boolean).join(" ");
 
   // No model and not generating → show profile pic or placeholder
@@ -302,7 +327,7 @@ export default function CharacterViewer({
           <Suspense fallback={null}>
             <GLBModel
               url={activeModelUrl!}
-              isSpeaking={isSpeaking}
+              state={state}
               isPreview={isPreviewModel}
               audioLevel={audioLevel}
             />
@@ -318,6 +343,16 @@ export default function CharacterViewer({
             onEnd={handleDragEnd}
           />
         </Canvas>
+      )}
+
+      {/* Mic status pill — visible during voice session */}
+      {isVoiceSession && (
+        <div className="character-viewer__status-pill">
+          <span className={`character-viewer__status-dot character-viewer__status-dot--${state}`} />
+          <span className="character-viewer__status-label">
+            {state === "listening" ? "Listening" : state === "thinking" ? "Thinking..." : "Speaking"}
+          </span>
+        </div>
       )}
     </div>
   );

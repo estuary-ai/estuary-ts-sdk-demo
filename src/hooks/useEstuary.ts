@@ -57,8 +57,10 @@ export function useEstuary() {
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
+  const [botAudioLevel, setBotAudioLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const lastSttTextRef = useRef<string>("");
+  const speakingGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cleanup = useCallback(() => {
     if (clientRef.current) {
@@ -175,15 +177,36 @@ export function useEstuary() {
       });
 
       client.on("audioPlaybackStarted", () => {
+        // Cancel any pending grace timer from a previous utterance
+        if (speakingGraceTimerRef.current) {
+          clearTimeout(speakingGraceTimerRef.current);
+          speakingGraceTimerRef.current = null;
+        }
         setIsBotSpeaking(true);
       });
 
       client.on("audioPlaybackComplete", () => {
-        setIsBotSpeaking(false);
+        // Grace period: keep isBotSpeaking true for 500ms to cover
+        // audio still playing from the WebRTC jitter buffer
+        speakingGraceTimerRef.current = setTimeout(() => {
+          speakingGraceTimerRef.current = null;
+          setIsBotSpeaking(false);
+          setBotAudioLevel(0);
+        }, 500);
+      });
+
+      client.on("botAudioLevel", (level: number) => {
+        setBotAudioLevel(level);
       });
 
       client.on("interrupt", () => {
+        // Interrupt kills animation immediately (no grace period)
+        if (speakingGraceTimerRef.current) {
+          clearTimeout(speakingGraceTimerRef.current);
+          speakingGraceTimerRef.current = null;
+        }
         setIsBotSpeaking(false);
+        setBotAudioLevel(0);
       });
 
       client.on("error", (err) => {
@@ -276,6 +299,7 @@ export function useEstuary() {
     isVoiceActive,
     isMuted,
     isBotSpeaking,
+    botAudioLevel,
     error,
     connect,
     disconnect,

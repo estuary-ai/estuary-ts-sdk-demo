@@ -11,8 +11,8 @@
 
 .character-viewer--speaking {
   filter:
-    drop-shadow(0 0 calc(8px + 12px * var(--audio-level)) rgba(90, 173, 207, calc(0.1 + 0.15 * var(--audio-level))))
-    drop-shadow(0 0 calc(16px + 32px * var(--audio-level)) rgba(90, 173, 207, calc(0.05 + 0.1 * var(--audio-level))));
+    drop-shadow(0 0 calc(8px + 12px * var(--audio-level)) rgba(90, 173, 207, calc(0.12 + 0.25 * var(--audio-level))))
+    drop-shadow(0 0 calc(16px + 32px * var(--audio-level)) rgba(90, 173, 207, calc(0.08 + 0.18 * var(--audio-level))));
 }
 
 /* Glow aura above the model canvas */
@@ -33,8 +33,8 @@
 }
 
 .character-viewer--speaking::before {
-  opacity: calc(0.1 + 0.25 * var(--audio-level));
-  transform: scale(calc(0.92 + 0.1 * var(--audio-level)));
+  opacity: calc(0.15 + 0.45 * var(--audio-level));
+  transform: scale(calc(0.94 + 0.14 * var(--audio-level)));
   transition: opacity 150ms ease-out, transform 150ms ease-out;
 }
 
@@ -65,6 +65,102 @@
   background: radial-gradient(ellipse, rgba(90, 173, 207, calc(0.15 + 0.2 * var(--audio-level))) 0%, rgba(90, 173, 207, calc(0.08 + 0.12 * var(--audio-level))) 42%, transparent 80%);
   filter: blur(calc(4px + 4px * var(--audio-level)));
   transition: width 150ms ease-out, height 150ms ease-out, filter 150ms ease-out;
+}
+
+/* ─── Listening state (voice active, waiting) ─── */
+
+.character-viewer--listening {
+  filter: drop-shadow(0 0 12px rgba(90, 173, 207, 0.08));
+}
+
+.character-viewer--listening::before {
+  opacity: 0.06;
+  transform: scale(0.92);
+  transition: opacity 400ms ease, transform 400ms ease;
+}
+
+.character-viewer--listening::after {
+  opacity: 0.5;
+  transition: opacity 400ms ease;
+}
+
+/* ─── Thinking state (bot processing) ─── */
+
+.character-viewer--thinking {
+  filter: drop-shadow(0 0 14px rgba(90, 173, 207, 0.1));
+}
+
+.character-viewer--thinking::before {
+  opacity: 0.1;
+  transform: scale(0.93);
+  animation: cv-think-pulse 1.8s ease-in-out infinite;
+}
+
+.character-viewer--thinking::after {
+  opacity: 0.6;
+  animation: cv-think-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes cv-think-pulse {
+  0%, 100% { opacity: 0.06; }
+  50% { opacity: 0.14; }
+}
+
+/* ─── Status pill ─── */
+
+.character-viewer__status-pill {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: var(--color-surface, #101522);
+  border: 1px solid var(--color-border, #283048);
+  backdrop-filter: blur(12px);
+  animation: cv-fade-in 300ms ease;
+}
+
+.character-viewer__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.character-viewer__status-dot--listening {
+  background: var(--color-success, #5cb87a);
+  animation: cv-dot-pulse 2s ease-in-out infinite;
+}
+
+.character-viewer__status-dot--thinking {
+  background: var(--color-warning, #d4a04a);
+  animation: cv-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.character-viewer__status-dot--speaking {
+  background: var(--color-accent, #5aadcf);
+}
+
+.character-viewer__status-label {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--color-foreground, #d0d8e4);
+}
+
+@keyframes cv-dot-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+@keyframes cv-fade-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
 .character-viewer canvas {
