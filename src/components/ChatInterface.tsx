@@ -622,7 +622,7 @@ export default function ChatInterface() {
 
         {/* Right panel: Chat or Memory */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          {rightPanel === "chat" ? (
+          {rightPanel === "chat" || process.env.NODE_ENV !== "development" ? (
             <>
               <div className="flex-1 overflow-y-auto px-4 py-4">
                 <div className="space-y-3">
