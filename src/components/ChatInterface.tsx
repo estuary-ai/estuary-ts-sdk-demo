@@ -371,14 +371,18 @@ export default function ChatInterface() {
 
             {showOverflow && (
               <div className="absolute right-0 top-12 w-48 rounded border border-border bg-surface shadow-xl z-50 py-1">
-                <button onClick={() => { setRightPanel(p => p === "memory" ? "chat" : "memory"); setShowOverflow(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted hover:text-foreground hover:bg-surface-light transition">
-                  {rightPanel === "memory" ? "Chat" : "Memory Map"}
-                </button>
-                <button onClick={() => { setShowShareModal(true); setShowOverflow(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted hover:text-foreground hover:bg-surface-light transition">
-                  Share
-                </button>
+                {process.env.NODE_ENV === "development" && (
+                  <>
+                    <button onClick={() => { setRightPanel(p => p === "memory" ? "chat" : "memory"); setShowOverflow(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted hover:text-foreground hover:bg-surface-light transition">
+                      {rightPanel === "memory" ? "Chat" : "Memory Map"}
+                    </button>
+                    <button onClick={() => { setShowShareModal(true); setShowOverflow(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted hover:text-foreground hover:bg-surface-light transition">
+                      Share
+                    </button>
+                  </>
+                )}
                 {process.env.NODE_ENV === "development" && (
                   <button onClick={() => { setShowSettings(true); setShowOverflow(false); }}
                     className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted hover:text-foreground hover:bg-surface-light transition">
@@ -398,49 +402,52 @@ export default function ChatInterface() {
         {/* Desktop header actions */}
         <div className="hidden md:flex items-center gap-3">
           <ConnectionBadge state={connectionState} />
-          <button
-            onClick={() => setRightPanel(rightPanel === "memory" ? "chat" : "memory")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition ${
-              rightPanel === "memory"
-                ? "border-accent/50 text-accent-light bg-accent/10"
-                : "border-border text-muted hover:text-accent-light hover:border-accent/50"
-            }`}
-            title={rightPanel === "memory" ? "Back to Chat" : "Memory Map"}
-          >
-            {rightPanel === "memory" ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-                <path d="M2 12h20" />
-              </svg>
-            )}
-            {rightPanel === "memory" ? "Chat" : "Memory"}
-          </button>
-          <div className="relative" ref={shareRef}>
-            <button
-              onClick={() => setShowShareModal(!showShareModal)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition ${
-                showShareModal
-                  ? "border-accent/50 text-accent-light bg-accent/10"
-                  : "border-border text-muted hover:text-accent-light hover:border-accent/50"
-              }`}
-              title="Share"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="18" cy="5" r="3" />
-                <circle cx="6" cy="12" r="3" />
-                <circle cx="18" cy="19" r="3" />
-                <line x1="8.59" x2="15.42" y1="13.51" y2="17.49" />
-                <line x1="15.41" x2="8.59" y1="6.51" y2="10.49" />
-              </svg>
-              Share
-            </button>
-
-          </div>
+          {process.env.NODE_ENV === "development" && (
+            <>
+              <button
+                onClick={() => setRightPanel(rightPanel === "memory" ? "chat" : "memory")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition ${
+                  rightPanel === "memory"
+                    ? "border-accent/50 text-accent-light bg-accent/10"
+                    : "border-border text-muted hover:text-accent-light hover:border-accent/50"
+                }`}
+                title={rightPanel === "memory" ? "Back to Chat" : "Memory Map"}
+              >
+                {rightPanel === "memory" ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+                    <path d="M2 12h20" />
+                  </svg>
+                )}
+                {rightPanel === "memory" ? "Chat" : "Memory"}
+              </button>
+              <div className="relative" ref={shareRef}>
+                <button
+                  onClick={() => setShowShareModal(!showShareModal)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition ${
+                    showShareModal
+                      ? "border-accent/50 text-accent-light bg-accent/10"
+                      : "border-border text-muted hover:text-accent-light hover:border-accent/50"
+                  }`}
+                  title="Share"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" x2="15.42" y1="13.51" y2="17.49" />
+                    <line x1="15.41" x2="8.59" y1="6.51" y2="10.49" />
+                  </svg>
+                  Share
+                </button>
+              </div>
+            </>
+          )}
           {process.env.NODE_ENV === "development" && (
             <button
               onClick={() => setShowSettings(true)}
@@ -463,8 +470,8 @@ export default function ChatInterface() {
         </div>
       </header>
 
-      {/* Share modal - rendered fixed so it's never clipped */}
-      {showShareModal && (
+      {/* Share modal - dev only */}
+      {process.env.NODE_ENV === "development" && showShareModal && (
         <div ref={shareRef} className="fixed top-14 left-2 right-2 md:left-auto md:right-4 md:w-96 rounded border border-border bg-surface shadow-xl z-50 animate-fade-in-up">
           <div className="p-4 space-y-3">
             <div className="flex items-center justify-between">
