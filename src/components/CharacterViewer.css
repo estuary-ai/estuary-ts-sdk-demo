@@ -1,0 +1,168 @@
+.character-viewer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: filter 220ms ease;
+}
+
+.character-viewer--speaking {
+  filter:
+    drop-shadow(0 0 16px rgba(0, 240, 255, 0.22))
+    drop-shadow(0 0 36px rgba(0, 240, 255, 0.12));
+}
+
+/* Glow aura behind the model */
+.character-viewer::before {
+  content: '';
+  position: absolute;
+  inset: 12% 16% 18%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(180, 250, 255, 0.22) 0%, rgba(0, 240, 255, 0.14) 28%, rgba(0, 240, 255, 0.06) 52%, transparent 74%);
+  opacity: 0;
+  filter: blur(24px);
+  pointer-events: none;
+  transform: scale(0.9);
+  transform-origin: center;
+  mix-blend-mode: screen;
+}
+
+.character-viewer--speaking::before {
+  opacity: 0.65;
+  animation: cv-speaking-glow 1.9s cubic-bezier(0.37, 0, 0.2, 1) infinite;
+}
+
+/* Holographic floor glow */
+.character-viewer::after {
+  content: '';
+  position: absolute;
+  bottom: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 4px;
+  background: radial-gradient(ellipse, rgba(0, 240, 255, 0.4) 0%, transparent 70%);
+  border-radius: 50%;
+  filter: blur(4px);
+  pointer-events: none;
+  transition:
+    width 220ms ease,
+    height 220ms ease,
+    filter 220ms ease,
+    opacity 220ms ease;
+}
+
+.character-viewer--speaking::after {
+  width: 72%;
+  height: 10px;
+  background: radial-gradient(ellipse, rgba(0, 240, 255, 0.58) 0%, rgba(0, 240, 255, 0.22) 42%, transparent 80%);
+  filter: blur(7px);
+  animation: cv-speaking-floor 1.9s ease-in-out infinite;
+}
+
+.character-viewer canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+@keyframes cv-speaking-glow {
+  0%, 100% {
+    opacity: 0.34;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.74;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes cv-speaking-floor {
+  0%, 100% {
+    opacity: 0.48;
+    transform: translateX(-50%) scaleX(0.94);
+  }
+  50% {
+    opacity: 0.82;
+    transform: translateX(-50%) scaleX(1.05);
+  }
+}
+
+/* Loading overlay */
+.character-viewer__loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 10;
+}
+
+.character-viewer__spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(0, 240, 255, 0.15);
+  border-top-color: rgba(0, 240, 255, 0.7);
+  border-radius: 50%;
+  animation: cv-spin 0.8s linear infinite;
+}
+
+.character-viewer__progress-bar {
+  width: 120px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.character-viewer__progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(0, 240, 255, 0.6), rgba(0, 240, 255, 0.9));
+  border-radius: 2px;
+  transition: width 300ms ease;
+}
+
+.character-viewer__loading-text {
+  font-size: 11px;
+  color: rgba(0, 240, 255, 0.6);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+@keyframes cv-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Profile image fallback */
+.character-viewer__profile {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.character-viewer__profile img {
+  max-width: 70%;
+  max-height: 70%;
+  border-radius: 16px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.character-viewer__placeholder {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

@@ -2,12 +2,15 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ConnectionState } from "@estuary-ai/sdk";
+import { ConnectionState, type CharacterInfo } from "@estuary-ai/sdk";
 import { useEstuary, type EstuaryConfig, type EstuarySettings, DEFAULT_SETTINGS } from "@/hooks/useEstuary";
 import { encryptWithPassphrase } from "@/lib/crypto";
-import CharacterAvatar, { type CharacterState } from "./CharacterAvatar";
+import type { CharacterState } from "./CharacterAvatar";
 import MemoryPanel from "./MemoryPanel";
 import SettingsDrawer from "./SettingsDrawer";
+import dynamic from "next/dynamic";
+
+const CharacterViewer = dynamic(() => import("./CharacterViewer"), { ssr: false });
 
 function ConnectionBadge({ state }: { state: ConnectionState }) {
   const config: Record<string, { color: string; label: string }> = {
@@ -83,6 +86,7 @@ export default function ChatInterface() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [sharePassphrase, setSharePassphrase] = useState("");
   const [rightPanel, setRightPanel] = useState<"chat" | "memory">("chat");
+  const [characterInfo, setCharacterInfo] = useState<CharacterInfo | null>(null);
   const [splitPct, setSplitPct] = useState(50);
   const isDraggingRef = useRef(false);
   const splitContainerRef = useRef<HTMLDivElement>(null);
@@ -112,6 +116,30 @@ export default function ChatInterface() {
       connect(config, settings).catch(() => {});
     }
   }, [config, connect, settings]);
+
+  // Fetch character info (name, avatar, 3D model URLs) from API
+  useEffect(() => {
+    if (!config) return;
+    fetch(`${config.serverUrl}/api/agents/${config.characterId}`, {
+      headers: { "X-API-Key": config.apiKey },
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.id) {
+          setCharacterInfo({
+            id: data.id,
+            name: data.name ?? "",
+            tagline: data.tagline ?? null,
+            avatar: data.avatar ?? null,
+            modelUrl: data.modelUrl ?? null,
+            modelPreviewUrl: data.modelPreviewUrl ?? null,
+            modelStatus: data.modelStatus ?? null,
+            sourceImageUrl: data.sourceImageUrl ?? null,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [config]);
 
   // Sync suppressMicDuringPlayback to the live client (no reconnect needed)
   useEffect(() => {
@@ -219,6 +247,15 @@ export default function ChatInterface() {
     setTextInput("");
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (textInput.trim()) {
+        handleSendText(e as unknown as FormEvent);
+      }
+    }
+  };
+
   const generateShareLink = useCallback(async () => {
     if (!config || !sharePassphrase.trim()) return;
     setIsEncrypting(true);
@@ -281,19 +318,19 @@ export default function ChatInterface() {
       {/* Header */}
       <header className="flex items-center justify-between px-5 py-3 border-b border-border bg-surface/50 backdrop-blur-sm flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            </svg>
-          </div>
+          {characterInfo?.avatar ? (
+            <img
+              src={characterInfo.avatar}
+              alt={characterInfo.name}
+              className="w-8 h-8 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-sm font-semibold">
+              {characterInfo?.name?.charAt(0).toUpperCase() ?? "E"}
+            </div>
+          )}
           <div>
-            <h1 className="text-sm font-semibold">Estuary Voice Chat</h1>
-            {session && (
-              <p className="text-[10px] text-muted font-mono truncate max-w-[200px]">
-                {session.sessionId.slice(0, 8)}...
-              </p>
-            )}
+            <h1 className="text-sm font-semibold">{characterInfo?.name ?? "Estuary Voice Chat"}</h1>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -341,17 +378,19 @@ export default function ChatInterface() {
             </button>
 
           </div>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border text-muted hover:text-accent-light hover:border-accent/50 transition"
-            title="Settings"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-            Settings
-          </button>
+          {process.env.NODE_ENV === "development" && (
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border text-muted hover:text-accent-light hover:border-accent/50 transition"
+              title="Settings"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+              Settings
+            </button>
+          )}
           <button
             onClick={handleDisconnect}
             className="px-3 py-1.5 text-xs rounded-lg border border-border text-muted hover:text-danger hover:border-danger/50 transition"
@@ -488,97 +527,17 @@ export default function ChatInterface() {
             <div className="absolute bottom-1/4 right-1/4 w-48 h-48 bg-violet-600/5 rounded-full blur-3xl" />
           </div>
 
-          <div className="relative w-full max-w-sm aspect-[4/5] mx-auto">
-            <CharacterAvatar state={characterState} />
+          {/* Character 3D model / profile */}
+          <div className="absolute inset-0">
+            <CharacterViewer
+              modelUrl={characterInfo?.modelUrl ?? null}
+              previewModelUrl={characterInfo?.modelPreviewUrl ?? null}
+              modelStatus={characterInfo?.modelStatus ?? null}
+              avatarUrl={characterInfo?.avatar ?? null}
+              state={characterState as "idle" | "listening" | "thinking" | "speaking" | "happy"}
+            />
           </div>
 
-          <div className="mt-2 text-xs text-muted capitalize tracking-wide">
-            {characterState === "idle" && !isVoiceActive && "Ready to chat"}
-            {characterState === "idle" && isVoiceActive && "Listening..."}
-            {characterState === "listening" && "Listening..."}
-            {characterState === "thinking" && "Thinking..."}
-            {characterState === "speaking" && "Speaking..."}
-            {characterState === "happy" && "Happy"}
-          </div>
-
-          {/* Voice controls */}
-          <div className="mt-6 flex justify-center gap-3">
-            {!isVoiceActive ? (
-              <button
-                onClick={startVoice}
-                disabled={!isConnected}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white text-sm font-medium hover:from-indigo-600 hover:to-violet-700 transition-all disabled:opacity-50"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                </svg>
-                Start Voice
-              </button>
-            ) : (
-              <>
-                {(() => {
-                  const isSuppressed = isBotSpeaking && settings.suppressMicDuringPlayback;
-                  const showMuted = isMuted || isSuppressed;
-                  return (
-                    <button
-                      onClick={toggleMute}
-                      disabled={isSuppressed}
-                      className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all ${
-                        isSuppressed
-                          ? "bg-violet-600/20 text-violet-400 border border-violet-600/30 cursor-not-allowed opacity-75"
-                          : showMuted
-                            ? "bg-amber-600/20 text-amber-400 border border-amber-600/30"
-                            : "bg-surface-light text-foreground border border-border hover:bg-surface"
-                      }`}
-                    >
-                      {showMuted ? (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="1" x2="23" y1="1" y2="23" />
-                          <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-                          <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .78-.13 1.53-.36 2.24" />
-                        </svg>
-                      ) : (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                        </svg>
-                      )}
-                      {isSuppressed ? "Auto-muted" : isMuted ? "Unmute" : "Mute"}
-                    </button>
-                  );
-                })()}
-                {isBotSpeaking && (
-                  <button
-                    onClick={interruptBot}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-danger/20 text-danger border border-danger/30 text-sm font-medium hover:bg-danger/30 transition-all"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="6" y="6" width="12" height="12" rx="2" />
-                    </svg>
-                    Interrupt
-                  </button>
-                )}
-                <button
-                  onClick={stopVoice}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-surface-light text-danger border border-border text-sm font-medium hover:border-danger/50 transition-all"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
-                  Stop
-                </button>
-              </>
-            )}
-          </div>
-
-          {sttText && (
-            <div className="mt-4 px-6 max-w-sm">
-              <p className="text-sm text-accent-light text-center italic truncate">
-                &ldquo;{sttText}&rdquo;
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Drag handle */}
@@ -638,23 +597,122 @@ export default function ChatInterface() {
                 </div>
               </div>
 
-              <div className="flex-shrink-0 p-4 border-t border-border bg-surface/50 backdrop-blur-sm">
-                <form onSubmit={handleSendText} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={textInput}
-                    onChange={(e) => setTextInput(e.target.value)}
-                    placeholder="Type a message..."
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-surface-light border border-border text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition placeholder:text-muted"
-                    disabled={!isConnected}
-                  />
-                  <button
-                    type="submit"
-                    disabled={!isConnected || !textInput.trim()}
-                    className="px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-light transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Send
-                  </button>
+              <div className="flex-shrink-0 bg-surface/50 backdrop-blur-sm px-4 py-3 border-t border-border">
+                {/* STT live transcription banner */}
+                {isVoiceActive && sttText && (
+                  <p className="text-xs text-accent-light italic truncate mb-2 px-1">
+                    &ldquo;{sttText}&rdquo;
+                  </p>
+                )}
+
+                <form onSubmit={handleSendText}>
+                  <div className="flex items-center bg-surface-light border border-border rounded-2xl px-3 py-1 shadow-sm">
+                    {/* Textarea */}
+                    <textarea
+                      value={textInput}
+                      onChange={(e) => setTextInput(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder={isVoiceActive ? "Voice active — type to send text..." : "Type a message..."}
+                      className="bg-transparent border-none focus:ring-0 focus:outline-none resize-none flex-1 min-h-0 max-h-[120px] py-2 text-sm placeholder:text-muted"
+                      rows={1}
+                      disabled={!isConnected}
+                      style={{ boxShadow: "none" }}
+                    />
+
+                    {/* Button group */}
+                    <div className="flex items-center space-x-1.5 ml-2 flex-shrink-0">
+                      {/* Send button */}
+                      <button
+                        type="submit"
+                        disabled={!isConnected || !textInput.trim()}
+                        className="rounded-full h-8 w-8 p-0 flex items-center justify-center bg-accent text-white hover:bg-accent-light transition disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Send"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="22" x2="11" y1="2" y2="13" />
+                          <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                        </svg>
+                      </button>
+
+                      {isVoiceActive ? (
+                        <>
+                          {/* Mute toggle */}
+                          {(() => {
+                            const isSuppressed = isBotSpeaking && settings.suppressMicDuringPlayback;
+                            const showMuted = isMuted || isSuppressed;
+                            return (
+                              <button
+                                type="button"
+                                onClick={toggleMute}
+                                disabled={isSuppressed}
+                                className={`rounded-full h-8 w-8 p-0 flex items-center justify-center transition-all ${
+                                  isSuppressed
+                                    ? "bg-violet-600/20 text-violet-400 cursor-not-allowed opacity-75"
+                                    : showMuted
+                                      ? "bg-amber-600/20 text-amber-400"
+                                      : "bg-surface text-foreground hover:bg-surface-light"
+                                }`}
+                                title={isSuppressed ? "Auto-muted during playback" : isMuted ? "Unmute" : "Mute"}
+                              >
+                                {showMuted ? (
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="1" x2="23" y1="1" y2="23" />
+                                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+                                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .78-.13 1.53-.36 2.24" />
+                                  </svg>
+                                ) : (
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                  </svg>
+                                )}
+                              </button>
+                            );
+                          })()}
+
+                          {/* Interrupt (only when bot is speaking) */}
+                          {isBotSpeaking && (
+                            <button
+                              type="button"
+                              onClick={interruptBot}
+                              className="rounded-full h-8 w-8 p-0 flex items-center justify-center bg-danger/20 text-danger hover:bg-danger/30 transition-all"
+                              title="Interrupt"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <rect x="6" y="6" width="12" height="12" rx="2" />
+                              </svg>
+                            </button>
+                          )}
+
+                          {/* End voice call */}
+                          <button
+                            type="button"
+                            onClick={stopVoice}
+                            className="rounded-full h-8 w-8 p-0 flex items-center justify-center bg-danger/20 text-danger hover:bg-danger/30 transition-all"
+                            title="End Voice Call"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
+                              <line x1="23" x2="1" y1="1" y2="23" />
+                            </svg>
+                          </button>
+                        </>
+                      ) : (
+                        /* Voice call button */
+                        <button
+                          type="button"
+                          onClick={startVoice}
+                          disabled={!isConnected}
+                          className="rounded-full h-8 w-8 p-0 flex items-center justify-center bg-surface border border-border text-muted hover:text-accent-light hover:border-accent/50 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Start Voice Call"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </form>
               </div>
             </>
