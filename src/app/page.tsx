@@ -14,9 +14,13 @@ interface ConnectConfig {
   playerId: string;
 }
 
+/** Share tokens from share.estuary-ai.com are exchanged on Estuary Cloud, not a local dev server. */
+const SHARE_EXCHANGE_BASE =
+  process.env.NEXT_PUBLIC_SHARE_EXCHANGE_URL?.replace(/\/$/, "") ||
+  "https://api.estuary-ai.com";
+
 async function exchangeShareToken(token: string): Promise<ConnectConfig> {
-  const serverUrl = process.env.NEXT_PUBLIC_API_URL || DEFAULT_SERVER_URL;
-  const res = await fetch(`${serverUrl}/api/v1/share/${token}/exchange`, {
+  const res = await fetch(`${SHARE_EXCHANGE_BASE}/api/v1/share/${token}/exchange`, {
     method: "POST",
   });
   if (!res.ok) {
