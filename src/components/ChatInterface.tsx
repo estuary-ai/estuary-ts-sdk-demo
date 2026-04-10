@@ -412,6 +412,8 @@ export default function ChatInterface() {
   // Fetch character info (name, avatar, 3D model URLs) from API
   useEffect(() => {
     if (!config) return;
+    // Session token flows have no apiKey — skip REST fetch (character info loads after connect)
+    if (!config.apiKey) return;
     fetch(`${config.serverUrl}/api/agents/${config.characterId}`, {
       headers: { "X-API-Key": config.apiKey },
     })

@@ -9,7 +9,8 @@ const DEFAULT_SERVER_URL = IS_DEV ? "http://localhost:4001" : "https://api.estua
 
 interface ConnectConfig {
   serverUrl: string;
-  apiKey: string;
+  apiKey?: string;
+  sessionToken?: string;
   characterId: string;
   playerId: string;
 }
@@ -30,7 +31,7 @@ async function exchangeShareToken(token: string): Promise<ConnectConfig> {
   const data = await res.json();
   return {
     serverUrl: data.serverUrl || DEFAULT_SERVER_URL,
-    apiKey: data.apiKey,
+    sessionToken: data.sessionToken,
     characterId: data.characterId,
     playerId: data.playerId,
   };
@@ -41,7 +42,7 @@ function decodeLegacyConfig(hash: string): ConnectConfig | null {
     const raw = hash.startsWith("#") ? hash.slice(1) : hash;
     if (!raw) return null;
     const parsed = JSON.parse(atob(raw));
-    if (parsed.serverUrl && parsed.apiKey && parsed.characterId && parsed.playerId) {
+    if (parsed.serverUrl && (parsed.apiKey || parsed.sessionToken) && parsed.characterId && parsed.playerId) {
       return parsed as ConnectConfig;
     }
     return null;
@@ -53,7 +54,7 @@ function decodeLegacyConfig(hash: string): ConnectConfig | null {
 async function decryptConfig(hash: string, passphrase?: string): Promise<ConnectConfig> {
   const plaintext = await decryptPayload(hash, passphrase);
   const parsed = JSON.parse(plaintext);
-  if (!parsed.serverUrl || !parsed.apiKey || !parsed.characterId || !parsed.playerId) {
+  if (!parsed.serverUrl || (!parsed.apiKey && !parsed.sessionToken) || !parsed.characterId || !parsed.playerId) {
     throw new Error("Invalid config");
   }
   return parsed as ConnectConfig;
@@ -135,7 +136,7 @@ export default function ConnectPage() {
 
   // Auto-connect from shared link (legacy or after decryption)
   useEffect(() => {
-    if (isFromLink && config.apiKey) {
+    if (isFromLink && (config.apiKey || config.sessionToken)) {
       sessionStorage.setItem("estuary-config", JSON.stringify(config));
       router.push("/chat");
     }

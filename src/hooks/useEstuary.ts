@@ -19,7 +19,8 @@ export interface ChatMessage {
 
 export interface EstuaryConfig {
   serverUrl: string;
-  apiKey: string;
+  apiKey?: string;
+  sessionToken?: string;
   characterId: string;
   playerId: string;
 }
