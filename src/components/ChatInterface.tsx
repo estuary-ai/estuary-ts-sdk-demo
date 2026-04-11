@@ -2,7 +2,20 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ConnectionState, type CharacterInfo } from "@estuary-ai/sdk";
+import { ConnectionState } from "@estuary-ai/sdk";
+
+// Local type definition — published SDK (0.1.24+) exports this, but our
+// linked local SDK (0.1.22) doesn't yet. Shape matches the published API.
+type CharacterInfo = {
+  id: string;
+  name: string;
+  tagline: string | null;
+  avatar: string | null;
+  modelUrl: string | null;
+  modelPreviewUrl: string | null;
+  modelStatus: string | null;
+  sourceImageUrl: string | null;
+};
 import { useEstuary, type EstuaryConfig, type EstuarySettings, DEFAULT_SETTINGS } from "@/hooks/useEstuary";
 import { encryptWithPassphrase } from "@/lib/crypto";
 import type { CharacterState } from "./CharacterAvatar";
