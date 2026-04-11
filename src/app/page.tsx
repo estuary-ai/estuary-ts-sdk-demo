@@ -20,9 +20,30 @@ const SHARE_EXCHANGE_BASE =
   process.env.NEXT_PUBLIC_SHARE_EXCHANGE_URL?.replace(/\/$/, "") ||
   "https://api.estuary-ai.com";
 
+const RECIPIENT_COOKIE = "est_recipient_id";
+const RECIPIENT_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+
+/** Read or create a persistent per-recipient UUID so isolated shares have stable memory. */
+function getOrCreateRecipientId(): string {
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${RECIPIENT_COOKIE}=([^;]+)`)
+  );
+  if (match) return decodeURIComponent(match[1]);
+  const id = crypto.randomUUID();
+  document.cookie =
+    `${RECIPIENT_COOKIE}=${encodeURIComponent(id)}` +
+    `; max-age=${RECIPIENT_COOKIE_MAX_AGE}` +
+    `; path=/` +
+    `; SameSite=Lax`;
+  return id;
+}
+
 async function exchangeShareToken(token: string): Promise<ConnectConfig> {
+  const recipientId = getOrCreateRecipientId();
   const res = await fetch(`${SHARE_EXCHANGE_BASE}/api/v1/share/${token}/exchange`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recipientId }),
   });
   if (!res.ok) {
     const detail = await res.text();
