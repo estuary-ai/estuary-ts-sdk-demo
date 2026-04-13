@@ -113,7 +113,6 @@ export default function ConnectPage() {
       setIsExchangingShare(true);
       exchangeShareToken(shareToken)
         .then((creds) => {
-          setConfig(creds);
           sessionStorage.setItem("estuary-config", JSON.stringify(creds));
           router.push("/chat");
         })
