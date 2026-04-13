@@ -196,10 +196,6 @@ export function useEstuary() {
         }, 500);
       });
 
-      client.on("botAudioLevel", (level: number) => {
-        setBotAudioLevel(level);
-      });
-
       client.on("interrupt", () => {
         // Interrupt kills animation immediately (no grace period)
         if (speakingGraceTimerRef.current) {
