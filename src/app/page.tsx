@@ -15,6 +15,17 @@ interface ConnectConfig {
   playerId: string;
 }
 
+interface CharacterInfo {
+  id: string;
+  name: string;
+  tagline: string | null;
+  avatar: string | null;
+  modelUrl: string | null;
+  modelPreviewUrl: string | null;
+  modelStatus: string | null;
+  sourceImageUrl: string | null;
+}
+
 /** Share tokens from share.estuary-ai.com are exchanged on Estuary Cloud, not a local dev server. */
 const SHARE_EXCHANGE_BASE =
   process.env.NEXT_PUBLIC_SHARE_EXCHANGE_URL?.replace(/\/$/, "") ||
@@ -38,7 +49,9 @@ function getOrCreateRecipientId(): string {
   return id;
 }
 
-async function exchangeShareToken(token: string): Promise<ConnectConfig> {
+async function exchangeShareToken(
+  token: string
+): Promise<{ config: ConnectConfig; character: CharacterInfo | null }> {
   const recipientId = getOrCreateRecipientId();
   const res = await fetch(`${SHARE_EXCHANGE_BASE}/api/v1/share/${token}/exchange`, {
     method: "POST",
@@ -51,10 +64,13 @@ async function exchangeShareToken(token: string): Promise<ConnectConfig> {
   }
   const data = await res.json();
   return {
-    serverUrl: data.serverUrl || DEFAULT_SERVER_URL,
-    sessionToken: data.sessionToken,
-    characterId: data.characterId,
-    playerId: data.playerId,
+    config: {
+      serverUrl: data.serverUrl || DEFAULT_SERVER_URL,
+      sessionToken: data.sessionToken,
+      characterId: data.characterId,
+      playerId: data.playerId,
+    },
+    character: (data.character as CharacterInfo | undefined) ?? null,
   };
 }
 
@@ -111,12 +127,21 @@ export default function ConnectPage() {
     if (shareToken) {
       setIsFromLink(true);
       setIsExchangingShare(true);
+      // Pre-clear any prior share's stash so a new link cannot inherit stale
+      // character metadata in the same tab.
+      sessionStorage.removeItem("estuary-config");
+      sessionStorage.removeItem("estuary-character");
       exchangeShareToken(shareToken)
-        .then((creds) => {
+        .then(({ config: creds, character }) => {
           sessionStorage.setItem("estuary-config", JSON.stringify(creds));
+          if (character) {
+            sessionStorage.setItem("estuary-character", JSON.stringify(character));
+          }
           router.push("/chat");
         })
         .catch((err) => {
+          sessionStorage.removeItem("estuary-config");
+          sessionStorage.removeItem("estuary-character");
           setIsFromLink(false);
           setIsExchangingShare(false);
           setHashError(

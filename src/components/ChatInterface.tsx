@@ -425,8 +425,8 @@ export default function ChatInterface() {
   // Fetch character info (name, avatar, 3D model URLs) from API
   useEffect(() => {
     if (!config) return;
-    // Session token flows have no apiKey — skip REST fetch (character info loads after connect)
-    if (!config.apiKey) return;
+    // Session token flows have no apiKey — skip REST fetch (character info loads from sessionStorage)
+    if (!config.apiKey || config.sessionToken) return;
     fetch(`${config.serverUrl}/api/agents/${config.characterId}`, {
       headers: { "X-API-Key": config.apiKey },
     })
@@ -450,6 +450,35 @@ export default function ChatInterface() {
         }
       })
       .catch(() => {});
+  }, [config]);
+
+  // Share-link (session token) flows: character info is pre-fetched at share
+  // exchange time and stashed in sessionStorage by the connect page, so hydrate
+  // it here instead of hitting /api/agents/{id} (which requires an API key).
+  useEffect(() => {
+    if (!config) return;
+    if (config.apiKey) return; // API-key flow uses the REST fetch above
+    const saved = sessionStorage.getItem("estuary-character");
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved) as CharacterInfo;
+      // Backend passes /static/ paths through unchanged when S3 is disabled,
+      // so we repeat the same /-prefix resolution the REST path does above.
+      const resolve = (u: string | null) =>
+        u && u.startsWith("/") ? `${config.serverUrl}${u}` : u;
+      setCharacterInfo({
+        id: parsed.id,
+        name: parsed.name ?? "",
+        tagline: parsed.tagline ?? null,
+        avatar: resolve(parsed.avatar ?? null),
+        modelUrl: resolve(parsed.modelUrl ?? null),
+        modelPreviewUrl: resolve(parsed.modelPreviewUrl ?? null),
+        modelStatus: parsed.modelStatus ?? null,
+        sourceImageUrl: resolve(parsed.sourceImageUrl ?? null),
+      });
+    } catch {
+      // Malformed stash — silently ignore, manual-connect flow has no stash.
+    }
   }, [config]);
 
   // Sync suppressMicDuringPlayback to the live client (no reconnect needed)
