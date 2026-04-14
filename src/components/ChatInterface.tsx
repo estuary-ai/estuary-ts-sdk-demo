@@ -335,7 +335,7 @@ function CharacterInfoBlock({ characterInfo }: { characterInfo: CharacterInfo | 
         rel="noopener noreferrer"
         className="mt-2 w-full text-center px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-light transition"
       >
-        Build your own agent on Estuary
+        Build your own characters on Estuary!
       </a>
     </div>
   );
@@ -959,7 +959,7 @@ export default function ChatInterface() {
                 rel="noopener noreferrer"
                 className="block w-full text-center px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-light transition"
               >
-                Build your own agent on Estuary
+                Build your own characters on Estuary!
               </a>
             </div>
             <div className="shrink-0 px-20 py-2 border-t border-border bg-surface">
