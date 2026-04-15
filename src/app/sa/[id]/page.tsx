@@ -1,0 +1,154 @@
+"use client";
+
+/**
+ * Share Anchor landing route (quick-260415-f3m).
+ *
+ * Anchors are stable, owner-scoped redirectors the backend mints a fresh
+ * short-lived sst_ session token for on every visit. Users reach this
+ * route by tapping an NFC tag or scanning a QR code programmed with
+ * `https://share.estuary-ai.com/sa/{anchor_id}`.
+ *
+ * Flow:
+ *   1. Call POST /api/v1/share-anchors/{id}/open (unauthenticated,
+ *      rate-limited per anchor id).
+ *   2. Stash the returned session + character in sessionStorage using
+ *      the EXACT SAME KEYS the existing exchangeShareToken flow writes
+ *      (see src/app/page.tsx lines 134-140) so /chat rehydrates unchanged.
+ *   3. Replace the URL with /chat so back navigation doesn't re-trigger.
+ *
+ * Errors:
+ *   - 404 -> "Anchor unavailable" (revoked or never existed)
+ *   - 429 -> "Too many taps" (rate limit; user should wait ~1m)
+ *   - Network -> "Network error, please try again"
+ */
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+
+const IS_DEV = process.env.NODE_ENV === "development";
+const DEFAULT_SERVER_URL = IS_DEV
+    ? "http://localhost:4001"
+    : "https://api.estuary-ai.com";
+
+// Matches SHARE_EXCHANGE_BASE in src/app/page.tsx (same env var + default)
+const ANCHOR_OPEN_BASE =
+    process.env.NEXT_PUBLIC_SHARE_EXCHANGE_URL?.replace(/\/$/, "") ||
+    "https://api.estuary-ai.com";
+
+interface CharacterInfo {
+    id: string;
+    name: string;
+    tagline: string | null;
+    avatar: string | null;
+    modelUrl: string | null;
+    modelPreviewUrl: string | null;
+    modelStatus: string | null;
+    sourceImageUrl: string | null;
+}
+
+interface OpenAnchorResponse {
+    sessionToken: string;
+    characterId: string;
+    playerId: string;
+    serverUrl: string | null;
+    character: CharacterInfo;
+    memorySharing?: "isolated" | "shared";
+}
+
+export default function AnchorLanding() {
+    const params = useParams<{ id: string }>();
+    const router = useRouter();
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const anchorId = params?.id;
+        if (!anchorId) {
+            setError("This anchor is unavailable.");
+            return;
+        }
+
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const res = await fetch(
+                    `${ANCHOR_OPEN_BASE}/api/v1/share-anchors/${encodeURIComponent(anchorId)}/open`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                    },
+                );
+
+                if (cancelled) return;
+
+                if (!res.ok) {
+                    if (res.status === 429) {
+                        setError("Too many taps. Try again in a minute.");
+                    } else {
+                        setError("This anchor is unavailable.");
+                    }
+                    return;
+                }
+
+                const data: OpenAnchorResponse = await res.json();
+
+                // Pre-clear any prior share session so a new anchor cannot
+                // inherit stale character metadata in the same tab. Matches
+                // the exchangeShareToken handler in src/app/page.tsx.
+                sessionStorage.removeItem("estuary-config");
+                sessionStorage.removeItem("estuary-character");
+
+                // Stash the new config + character under the SAME keys the
+                // existing /chat route rehydrates. The `estuary-config` shape
+                // is `{serverUrl, sessionToken, characterId, playerId}` —
+                // see src/app/page.tsx lines 52-75 (exchangeShareToken).
+                sessionStorage.setItem(
+                    "estuary-config",
+                    JSON.stringify({
+                        serverUrl: data.serverUrl || DEFAULT_SERVER_URL,
+                        sessionToken: data.sessionToken,
+                        characterId: data.characterId,
+                        playerId: data.playerId,
+                    }),
+                );
+                if (data.character) {
+                    sessionStorage.setItem(
+                        "estuary-character",
+                        JSON.stringify(data.character),
+                    );
+                }
+
+                // Replace, not push — tapping Back shouldn't re-open the anchor.
+                router.replace("/chat");
+            } catch (err) {
+                if (!cancelled) {
+                    setError("Network error. Please try again.");
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [params, router]);
+
+    return (
+        <main className="flex min-h-dvh items-center justify-center p-6 text-center">
+            {error ? (
+                <div className="max-w-sm space-y-2">
+                    <h1 className="text-lg font-medium">
+                        Can't open this anchor
+                    </h1>
+                    <p className="text-sm text-muted-foreground">{error}</p>
+                </div>
+            ) : (
+                <div className="max-w-sm space-y-2">
+                    <h1 className="text-lg font-medium">Opening character…</h1>
+                    <p className="text-sm text-muted-foreground">
+                        One moment while we set up the conversation.
+                    </p>
+                </div>
+            )}
+        </main>
+    );
+}
