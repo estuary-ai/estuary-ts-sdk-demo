@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const ALLOWED_HOSTS = ["estuary-public.s3.us-west-1.amazonaws.com", "localhost"];
-const ALLOWED_PATH_PREFIXES = ["/agent_models/", "/agent_images/", "/static/agent_models/", "/static/agent_images/"];
+const ALLOWED_HOSTS = ["estuary-public.s3.us-west-1.amazonaws.com", "localhost", "minio"];
+const ALLOWED_PATH_PREFIXES = ["/agent_models/", "/agent_images/", "/static/agent_models/", "/static/agent_images/", "/estuary-public/agent_models/", "/estuary-public/agent_images/"];
 
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");
@@ -24,7 +24,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Path not allowed" }, { status: 403 });
   }
 
-  const upstream = await fetch(url);
+  // Rewrite Docker-internal minio hostname to localhost for local dev
+  let fetchUrl = url;
+  if (parsed.hostname === "minio") {
+    fetchUrl = url.replace(`${parsed.protocol}//minio:`, `${parsed.protocol}//localhost:`);
+  }
+
+  const upstream = await fetch(fetchUrl);
   if (!upstream.ok) {
     return NextResponse.json({ error: "Upstream fetch failed" }, { status: upstream.status });
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useMemo, useState, useCallback, useEffect, Suspense } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -156,6 +156,21 @@ function GLBModel({ url, state, isPreview, audioLevel }: GLBModelProps) {
       <primitive object={model} />
     </group>
   );
+}
+
+// ─── Adaptive FOV — scales character to fill container ──────────
+
+function AdaptiveFov() {
+  const { camera, size } = useThree();
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const aspect = size.width / size.height;
+    // Base FOV of 45 at ~1:1 aspect. Widen for narrow containers so the
+    // model stays fully visible; keep 45 for wide/square containers.
+    cam.fov = THREE.MathUtils.clamp(aspect < 1 ? 45 / aspect : 45, 30, 75);
+    cam.updateProjectionMatrix();
+  }, [camera, size]);
+  return null;
 }
 
 // ─── Loading Overlay ────────────────────────────────────────────
@@ -316,11 +331,12 @@ export default function CharacterViewer({
       )}
       {hasModel && (
         <Canvas
-          camera={{ position: [0, 0.3, 4.8], fov: 40 }}
+          camera={{ position: [0, 0.2, 3.2], fov: 45 }}
           gl={{ alpha: true, antialias: !isMobile, stencil: false }}
           dpr={[1, 2]}
           style={{ background: "transparent" }}
         >
+          <AdaptiveFov />
           <ambientLight intensity={0.6} />
           <directionalLight position={[5, 5, 5]} intensity={0.8} />
           <directionalLight position={[-3, 2, -3]} intensity={0.3} />
@@ -336,7 +352,7 @@ export default function CharacterViewer({
             ref={controlsRef}
             enablePan={false}
             enableZoom={true}
-            minDistance={2}
+            minDistance={1.5}
             maxDistance={10}
             autoRotate={(state === "idle" || state === "happy") && !isDragPaused}
             autoRotateSpeed={1.2}
