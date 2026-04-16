@@ -34,7 +34,7 @@ function ConnectionBadge({ state }: { state: ConnectionState }) {
   };
   const c = config[state] ?? config[ConnectionState.Disconnected];
   return (
-    <div className="flex items-center gap-2 text-xs text-muted">
+    <div className="flex items-center gap-2 text-xs text-white/70">
       <div className={`w-2 h-2 rounded-full ${c.color}`} />
       {c.label}
     </div>
@@ -44,9 +44,9 @@ function ConnectionBadge({ state }: { state: ConnectionState }) {
 function TypingIndicator() {
   return (
     <div className="flex items-center gap-1 px-4 py-3">
-      <div className="typing-dot w-2 h-2 rounded-full bg-accent-light" />
-      <div className="typing-dot w-2 h-2 rounded-full bg-accent-light" />
-      <div className="typing-dot w-2 h-2 rounded-full bg-accent-light" />
+      <div className="typing-dot w-2 h-2 rounded-full bg-gray-400" />
+      <div className="typing-dot w-2 h-2 rounded-full bg-gray-400" />
+      <div className="typing-dot w-2 h-2 rounded-full bg-gray-400" />
     </div>
   );
 }
@@ -78,16 +78,16 @@ function FullChatLog({
         >
           <div
             className={`${
-              msg.role === "user" ? "max-w-[75%]" : "max-w-[85%]"
+              msg.role === "user" ? "max-w-[75%]" : "max-w-[80%]"
             } rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
               msg.role === "user"
-                ? "bg-accent text-white rounded-br-md"
-                : "bg-surface-light border border-border rounded-bl-md"
+                ? "bg-[#d0e8f5] text-[#1a1a2e] rounded-br-md"
+                : "bg-white text-[#1a1a2e] rounded-bl-md shadow-sm"
             } ${!msg.isFinal && msg.role === "bot" ? "opacity-80" : ""}`}
           >
             {msg.text}
             {!msg.isFinal && msg.role === "bot" && (
-              <span className="inline-block w-1.5 h-4 bg-accent-light/60 ml-0.5 animate-pulse rounded-sm" />
+              <span className="inline-block w-1.5 h-4 bg-accent/50 ml-0.5 animate-pulse rounded-sm" />
             )}
           </div>
         </div>
@@ -98,7 +98,7 @@ function FullChatLog({
         !messages.some((m) => m.role === "bot" && !m.isFinal) &&
         messages[messages.length - 1]?.role !== "bot" && (
           <div className="flex justify-start">
-            <div className="bg-surface-light border border-border rounded-2xl rounded-bl-md">
+            <div className="bg-white rounded-2xl rounded-bl-md shadow-sm">
               <TypingIndicator />
             </div>
           </div>
@@ -106,67 +106,6 @@ function FullChatLog({
 
       <div ref={messagesEndRef} />
     </div>
-  );
-}
-
-function LatestExchangeView({
-  recentVNMessages,
-  isVoiceActive,
-  isBotSpeaking,
-  messages,
-}: {
-  recentVNMessages: ChatMsg[];
-  isVoiceActive: boolean;
-  isBotSpeaking: boolean;
-  messages: ChatMsg[];
-}) {
-  return (
-    <div className="space-y-2">
-      {recentVNMessages.map((msg) => (
-        <div
-          key={msg.id}
-          className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-        >
-          {msg.role === "bot" ? (
-            <div
-              className={`max-w-[80%] rounded-2xl px-5 py-3 text-base leading-relaxed bg-surface-light/70 backdrop-blur-sm border border-white/10 rounded-bl-md ${
-                !msg.isFinal ? "opacity-80" : ""
-              }`}
-            >
-              {msg.text}
-              {!msg.isFinal && (
-                <span className="inline-block w-1.5 h-4 bg-accent-light/60 ml-0.5 animate-pulse rounded-sm" />
-              )}
-            </div>
-          ) : (
-            <div className="max-w-[70%] rounded-2xl px-5 py-3 text-base leading-relaxed bg-accent/80 backdrop-blur-sm text-white rounded-br-md">
-              {msg.text}
-            </div>
-          )}
-        </div>
-      ))}
-      {isVoiceActive &&
-        isBotSpeaking &&
-        !messages.some((m) => m.role === "bot" && !m.isFinal) &&
-        messages[messages.length - 1]?.role !== "bot" && (
-          <div className="flex justify-start">
-            <div className="bg-surface-light/70 backdrop-blur-sm border border-white/10 rounded-2xl rounded-bl-md">
-              <TypingIndicator />
-            </div>
-          </div>
-        )}
-    </div>
-  );
-}
-
-function ChatLogToggleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-      <path d="M8 10h.01" />
-      <path d="M12 10h.01" />
-      <path d="M16 10h.01" />
-    </svg>
   );
 }
 
@@ -185,6 +124,7 @@ function ChatInputForm({
   interruptBot,
   stopVoice,
   startVoice,
+  characterName,
   sttClassName,
   wrapperClassName,
 }: {
@@ -202,114 +142,147 @@ function ChatInputForm({
   interruptBot: () => void;
   stopVoice: () => void;
   startVoice: () => void;
+  characterName?: string;
   sttClassName?: string;
   wrapperClassName?: string;
 }) {
   return (
     <div className={wrapperClassName ?? ""}>
       {isVoiceActive && sttText && (
-        <p className={`text-xs text-accent-light italic truncate mb-2 px-1 ${sttClassName ?? ""}`}>
+        <p className={`text-xs text-white/70 italic truncate mb-2 px-1 ${sttClassName ?? ""}`}>
           &ldquo;{sttText}&rdquo;
         </p>
       )}
-      <form onSubmit={handleSendText}>
-        <div className="flex items-center bg-surface-light border border-border rounded-2xl px-3 py-1 shadow-sm">
-          <textarea
-            value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isVoiceActive ? "Voice active — type to send text..." : "Type a message..."}
-            className="bg-transparent border-none focus:ring-0 focus:outline-none resize-none flex-1 min-h-0 max-h-[120px] py-2 text-sm placeholder:text-muted"
-            rows={1}
-            disabled={!isConnected}
-            style={{ boxShadow: "none" }}
-          />
-          <div className="flex items-center space-x-1.5 ml-2 flex-shrink-0">
+      <div className="flex items-center gap-2">
+        <form onSubmit={handleSendText} className="flex-1 min-w-0">
+          <div className="flex items-center bg-white rounded-full px-2 py-1 shadow-lg">
+            {/* Camera icon */}
             <button
-              type="submit"
-              disabled={!isConnected || !textInput.trim()}
-              className="rounded-full h-11 w-11 md:h-8 md:w-8 p-0 flex items-center justify-center bg-accent text-white hover:bg-accent-light transition disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Send"
+              type="button"
+              className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 transition"
+              title="Camera"
+              disabled
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="22" x2="11" y1="2" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
               </svg>
             </button>
-            {isVoiceActive ? (
-              <>
-                {(() => {
-                  const isSuppressed = isBotSpeaking && settings.suppressMicDuringPlayback;
-                  const showMuted = isMuted || isSuppressed;
-                  return (
-                    <button
-                      type="button"
-                      onClick={toggleMute}
-                      disabled={isSuppressed}
-                      className={`rounded-full h-11 w-11 md:h-8 md:w-8 p-0 flex items-center justify-center transition-all ${
-                        isSuppressed
-                          ? "bg-[#9080a8]/20 text-[#9080a8] cursor-not-allowed opacity-75"
-                          : showMuted
-                            ? "bg-warning/20 text-warning"
-                            : "bg-surface text-foreground hover:bg-surface-light"
-                      }`}
-                      title={isSuppressed ? "Auto-muted during playback" : isMuted ? "Unmute" : "Mute"}
-                    >
-                      {showMuted ? (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="1" x2="23" y1="1" y2="23" />
-                          <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-                          <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .78-.13 1.53-.36 2.24" />
-                        </svg>
-                      ) : (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                        </svg>
-                      )}
-                    </button>
-                  );
-                })()}
-                {isBotSpeaking && (
-                  <button
-                    type="button"
-                    onClick={interruptBot}
-                    className="rounded-full h-11 w-11 md:h-8 md:w-8 p-0 flex items-center justify-center bg-danger/20 text-danger hover:bg-danger/30 transition-all"
-                    title="Interrupt"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="6" y="6" width="12" height="12" rx="2" />
-                    </svg>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={stopVoice}
-                  className="rounded-full h-11 w-11 md:h-8 md:w-8 p-0 flex items-center justify-center bg-danger/20 text-danger hover:bg-danger/30 transition-all"
-                  title="End Voice Call"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
-                    <line x1="23" x2="1" y1="1" y2="23" />
-                  </svg>
-                </button>
-              </>
-            ) : (
+            <textarea
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={`Talk to ${characterName || "character"}...`}
+              className="bg-transparent border-none focus:ring-0 focus:outline-none resize-none flex-1 min-h-0 max-h-[100px] min-w-0 py-2 text-sm text-gray-900 placeholder:text-gray-400"
+              rows={1}
+              disabled={!isConnected}
+              style={{ boxShadow: "none" }}
+            />
+            {textInput.trim() ? (
               <button
-                type="button"
-                onClick={startVoice}
+                type="submit"
                 disabled={!isConnected}
-                className="rounded-full h-11 w-11 md:h-8 md:w-8 p-0 flex items-center justify-center bg-surface border border-border text-muted hover:text-accent-light hover:border-accent/50 transition disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Start Voice Call"
+                className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-gray-900 text-white hover:bg-gray-700 transition disabled:opacity-30"
+                title="Send"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" x2="11" y1="2" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
                 </svg>
               </button>
-            )}
+            ) : textInput.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setTextInput("")}
+                className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-gray-900 text-white hover:bg-gray-700 transition"
+                title="Clear"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            ) : null}
           </div>
+        </form>
+
+        {/* Voice controls — outside the input pill */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {isVoiceActive ? (
+            <>
+              {(() => {
+                const isSuppressed = isBotSpeaking && settings.suppressMicDuringPlayback;
+                const showMuted = isMuted || isSuppressed;
+                return (
+                  <button
+                    type="button"
+                    onClick={toggleMute}
+                    disabled={isSuppressed}
+                    className={`rounded-full h-11 w-11 p-0 flex items-center justify-center transition-all ${
+                      isSuppressed
+                        ? "bg-[#9080a8]/20 text-[#9080a8] cursor-not-allowed opacity-75"
+                        : showMuted
+                          ? "bg-warning/20 text-warning"
+                          : "bg-white/15 text-white hover:bg-white/25"
+                    }`}
+                    title={isSuppressed ? "Auto-muted during playback" : isMuted ? "Unmute" : "Mute"}
+                  >
+                    {showMuted ? (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="1" x2="23" y1="1" y2="23" />
+                        <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+                        <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .78-.13 1.53-.36 2.24" />
+                      </svg>
+                    ) : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })()}
+              {isBotSpeaking && (
+                <button
+                  type="button"
+                  onClick={interruptBot}
+                  className="rounded-full h-11 w-11 p-0 flex items-center justify-center bg-danger/20 text-danger hover:bg-danger/30 transition-all"
+                  title="Interrupt"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="6" y="6" width="12" height="12" rx="2" />
+                  </svg>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={stopVoice}
+                className="rounded-full h-11 w-11 p-0 flex items-center justify-center bg-danger/20 text-danger hover:bg-danger/30 transition-all"
+                title="End Voice Call"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
+                  <line x1="23" x2="1" y1="1" y2="23" />
+                </svg>
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={startVoice}
+              disabled={!isConnected}
+              className="rounded-full h-11 w-11 p-0 flex items-center justify-center bg-gray-900 text-white hover:bg-gray-700 transition disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Start Voice Call"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" x2="12" y1="19" y2="23" />
+                <line x1="8" x2="16" y1="23" y2="23" />
+              </svg>
+            </button>
+          )}
         </div>
-      </form>
+      </div>
     </div>
   );
 }
@@ -360,7 +333,6 @@ export default function ChatInterface() {
   const {
     getClient,
     connectionState,
-    session,
     messages,
     sttText,
     isVoiceActive,
@@ -390,8 +362,6 @@ export default function ChatInterface() {
   const [sharePassphrase, setSharePassphrase] = useState("");
   const [rightPanel, setRightPanel] = useState<"chat" | "memory">("chat");
   const [characterInfo, setCharacterInfo] = useState<CharacterInfo | null>(null);
-  const [showChatHistory, setShowChatHistory] = useState(false);
-  const isMobileRef = useRef(typeof window !== "undefined" && window.innerWidth < 768);
   const [showOverflow, setShowOverflow] = useState(false);
   const [showInfoDrawer, setShowInfoDrawer] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -400,6 +370,7 @@ export default function ChatInterface() {
   const infoDrawerRef = useRef<HTMLDivElement>(null);
   const connectAttemptedRef = useRef(false);
   const isConnected = connectionState === ConnectionState.Connected;
+
   // Read config from sessionStorage and auto-connect
   useEffect(() => {
     const saved = sessionStorage.getItem("estuary-config");
@@ -425,7 +396,6 @@ export default function ChatInterface() {
   // Fetch character info (name, avatar, 3D model URLs) from API
   useEffect(() => {
     if (!config) return;
-    // Session token flows have no apiKey — skip REST fetch (character info loads from sessionStorage)
     if (!config.apiKey || config.sessionToken) return;
     fetch(`${config.serverUrl}/api/agents/${config.characterId}`, {
       headers: { "X-API-Key": config.apiKey },
@@ -433,8 +403,6 @@ export default function ChatInterface() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.id) {
-          // Resolve relative backend paths (e.g. /static/agent_models/...)
-          // to full URLs so the proxy and Three.js loaders can fetch them.
           const resolve = (u: string | null) =>
             u && u.startsWith("/") ? `${config.serverUrl}${u}` : u;
           setCharacterInfo({
@@ -452,18 +420,14 @@ export default function ChatInterface() {
       .catch(() => {});
   }, [config]);
 
-  // Share-link (session token) flows: character info is pre-fetched at share
-  // exchange time and stashed in sessionStorage by the connect page, so hydrate
-  // it here instead of hitting /api/agents/{id} (which requires an API key).
+  // Share-link (session token) flows: character info from sessionStorage
   useEffect(() => {
     if (!config) return;
-    if (config.apiKey) return; // API-key flow uses the REST fetch above
+    if (config.apiKey) return;
     const saved = sessionStorage.getItem("estuary-character");
     if (!saved) return;
     try {
       const parsed = JSON.parse(saved) as CharacterInfo;
-      // Backend passes /static/ paths through unchanged when S3 is disabled,
-      // so we repeat the same /-prefix resolution the REST path does above.
       const resolve = (u: string | null) =>
         u && u.startsWith("/") ? `${config.serverUrl}${u}` : u;
       setCharacterInfo({
@@ -477,11 +441,11 @@ export default function ChatInterface() {
         sourceImageUrl: resolve(parsed.sourceImageUrl ?? null),
       });
     } catch {
-      // Malformed stash — silently ignore, manual-connect flow has no stash.
+      // Malformed stash — silently ignore
     }
   }, [config]);
 
-  // Sync suppressMicDuringPlayback to the live client (no reconnect needed)
+  // Sync suppressMicDuringPlayback to the live client
   useEffect(() => {
     setSuppressMicDuringPlayback(settings.suppressMicDuringPlayback);
   }, [settings.suppressMicDuringPlayback, setSuppressMicDuringPlayback]);
@@ -523,21 +487,7 @@ export default function ChatInterface() {
     return null;
   }, [messages]);
 
-  /** Last 2 complete exchanges (up to ~4 messages), oldest → newest for VN overlay */
-  const recentVNMessages = useMemo(() => {
-    const recent: ChatMsg[] = [];
-    let exchanges = 0;
-    for (let i = messages.length - 1; i >= 0 && exchanges < 2; i--) {
-      const msg = messages[i] as ChatMsg;
-      recent.unshift(msg);
-      if (msg.role === "bot" && msg.isFinal) exchanges++;
-    }
-    return recent;
-  }, [messages]);
-
   const IS_DEV = process.env.NODE_ENV === "development";
-  const showMiddleColumn =
-    showChatHistory || (IS_DEV && rightPanel === "memory");
 
   const isHappyResponse = useMemo(() => {
     if (!lastBotMessage) return false;
@@ -552,11 +502,10 @@ export default function ChatInterface() {
     return base;
   }, [isVoiceActive, isBotSpeaking, sttText, hasPendingBotMessage, isHappyResponse]);
 
+  // Auto-scroll messages
   useEffect(() => {
-    if (showChatHistory || isMobileRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, showChatHistory]);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -574,7 +523,7 @@ export default function ChatInterface() {
 
   const handleSendText = (e: FormEvent) => {
     e.preventDefault();
-    if (!textInput.trim()) return;
+    if (!textInput.trim() || !isConnected) return;
     sendText(textInput.trim());
     setTextInput("");
   };
@@ -582,7 +531,7 @@ export default function ChatInterface() {
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (textInput.trim()) {
+      if (textInput.trim() && isConnected) {
         handleSendText(e as unknown as FormEvent);
       }
     }
@@ -610,7 +559,6 @@ export default function ChatInterface() {
         setCopiedField(field);
         setTimeout(() => setCopiedField(null), 2000);
       }).catch(() => {
-        // Fallback for when clipboard API fails
         const textarea = document.createElement("textarea");
         textarea.value = text;
         textarea.style.position = "fixed";
@@ -646,165 +594,127 @@ export default function ChatInterface() {
   }
 
   return (
-    <div className="h-[100dvh] flex flex-col">
-      {/* Header */}
-      <header className="border-b border-border bg-surface flex-shrink-0 px-5 py-3">
-        {/* Mobile: centered avatar/name over chat area; actions on sides */}
-        <div className="flex md:hidden items-center justify-between gap-2 relative min-h-[44px]">
+    <div className="h-[100dvh] relative overflow-hidden bg-background">
+      {/* ── Floating CTA — always visible, top center ── */}
+      <a
+        href="https://www.estuary-ai.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed left-1/2 -translate-x-1/2 z-50 px-6 py-2.5 md:px-8 md:py-3 rounded-full bg-accent text-white text-sm md:text-base font-semibold shadow-[0_2px_20px_rgba(90,173,207,0.45)] hover:bg-accent-light hover:shadow-[0_2px_24px_rgba(116,192,220,0.55)] hover:scale-[1.03] active:scale-[0.98] transition-all whitespace-nowrap"
+        style={{ top: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}
+      >
+        Start building on Estuary
+      </a>
+
+      {/* ── Floating top-right controls ── */}
+      <div
+        className="fixed right-3 z-40 flex items-center gap-2"
+        style={{ top: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}
+      >
+        <ConnectionBadge state={connectionState} />
+        <div className="relative" ref={overflowRef}>
           <button
             type="button"
-            onClick={() => setShowInfoDrawer(true)}
-            className="h-11 w-11 flex items-center justify-center rounded-lg border border-border text-muted hover:text-foreground transition shrink-0 z-10"
-            title="Character info"
-            aria-label="Character info"
+            onClick={() => setShowOverflow(!showOverflow)}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-black/30 backdrop-blur-sm text-white/70 hover:text-white hover:bg-black/50 transition"
+            title="Menu"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 16v-4" />
-              <path d="M12 8h.01" />
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="5" r="1.5"/>
+              <circle cx="12" cy="12" r="1.5"/>
+              <circle cx="12" cy="19" r="1.5"/>
             </svg>
           </button>
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center max-w-[70%] pointer-events-none">
-            <h1 className="text-lg font-semibold truncate text-center">
-              {characterInfo?.name ?? "Estuary Voice Chat"}
-            </h1>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 z-10">
-            <ConnectionBadge state={connectionState} />
-            <div className="relative" ref={overflowRef}>
+          {showOverflow && (
+            <div className="absolute right-0 top-11 w-48 rounded-xl border border-white/10 bg-surface/95 backdrop-blur-md shadow-xl z-50 py-1 overflow-hidden">
               <button
-                onClick={() => setShowOverflow(!showOverflow)}
-                className="h-11 w-11 flex items-center justify-center rounded-lg border border-border text-muted hover:text-foreground transition"
+                type="button"
+                onClick={() => { setShowInfoDrawer(true); setShowOverflow(false); }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="5" r="1.5"/>
-                  <circle cx="12" cy="12" r="1.5"/>
-                  <circle cx="12" cy="19" r="1.5"/>
-                </svg>
+                Character info
               </button>
-
-              {showOverflow && (
-                <div className="absolute right-0 top-12 w-48 rounded border border-border bg-surface shadow-xl z-50 py-1">
-                  <button
-                    type="button"
-                    onClick={() => { setShowInfoDrawer(true); setShowOverflow(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition"
-                  >
-                    Character info
-                  </button>
-                  {process.env.NODE_ENV === "development" && (
-                    <>
-                      <button onClick={() => { setRightPanel(p => p === "memory" ? "chat" : "memory"); setShowOverflow(false); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
-                        {rightPanel === "memory" ? "Chat" : "Memory Map"}
-                      </button>
-                      <button onClick={() => { setShowShareModal(true); setShowOverflow(false); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
-                        Share
-                      </button>
-                    </>
-                  )}
-                  {process.env.NODE_ENV === "development" && (
-                    <button onClick={() => { setShowSettings(true); setShowOverflow(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
-                      Settings
-                    </button>
-                  )}
-                  <div className="border-t border-border my-1" />
-                  <button onClick={() => { handleDisconnect(); setShowOverflow(false); }}
+              {IS_DEV && (
+                <>
+                  <button onClick={() => { setRightPanel(p => p === "memory" ? "chat" : "memory"); setShowOverflow(false); }}
                     className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
-                    Disconnect
+                    {rightPanel === "memory" ? "Chat" : "Memory Map"}
                   </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Desktop: character name aligned with model column width */}
-        <div className="hidden md:flex items-center w-full">
-          <div
-            className="flex-shrink-0 min-w-0 flex justify-center items-center px-2"
-            style={{ width: showMiddleColumn ? "50%" : "80%" }}
-          >
-            <h1 className="text-lg font-semibold text-center truncate max-w-full px-1">
-              {characterInfo?.name ?? "Estuary Voice Chat"}
-            </h1>
-          </div>
-          {showMiddleColumn && <div className="w-[30%] flex-shrink-0 min-w-0" aria-hidden="true" />}
-          <div className="w-1/5 flex-shrink-0 flex justify-end items-center gap-3 pl-2">
-            <ConnectionBadge state={connectionState} />
-            {process.env.NODE_ENV === "development" && (
-              <>
-                <button
-                  onClick={() => setRightPanel(rightPanel === "memory" ? "chat" : "memory")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition ${
-                    rightPanel === "memory"
-                      ? "border-accent/50 text-white bg-accent/10"
-                      : "border-border text-white hover:bg-surface-light hover:border-border"
-                  }`}
-                  title={rightPanel === "memory" ? "Back to Chat" : "Memory Map"}
-                >
-                  {rightPanel === "memory" ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-                      <path d="M2 12h20" />
-                    </svg>
-                  )}
-                  {rightPanel === "memory" ? "Chat" : "Memory"}
-                </button>
-                <div className="relative" ref={shareRef}>
-                  <button
-                    onClick={() => setShowShareModal(!showShareModal)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition ${
-                      showShareModal
-                        ? "border-accent/50 text-white bg-accent/10"
-                        : "border-border text-white hover:bg-surface-light hover:border-border"
-                    }`}
-                    title="Share"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="18" cy="5" r="3" />
-                      <circle cx="6" cy="12" r="3" />
-                      <circle cx="18" cy="19" r="3" />
-                      <line x1="8.59" x2="15.42" y1="13.51" y2="17.49" />
-                      <line x1="15.41" x2="8.59" y1="6.51" y2="10.49" />
-                    </svg>
+                  <button onClick={() => { setShowShareModal(true); setShowOverflow(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
                     Share
                   </button>
-                </div>
-              </>
-            )}
-            {process.env.NODE_ENV === "development" && (
-              <button
-                onClick={() => setShowSettings(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border text-white hover:bg-surface-light hover:border-border transition"
-                title="Settings"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                </svg>
-                Settings
+                  <button onClick={() => { setShowSettings(true); setShowOverflow(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
+                    Settings
+                  </button>
+                </>
+              )}
+              <div className="border-t border-white/10 my-1" />
+              <button onClick={() => { handleDisconnect(); setShowOverflow(false); }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
+                Disconnect
               </button>
-            )}
-            <button
-              onClick={handleDisconnect}
-              className="px-3 py-1.5 text-xs rounded-lg border border-border text-white hover:bg-surface-light hover:border-border transition"
-            >
-              Disconnect
-            </button>
-          </div>
+            </div>
+          )}
         </div>
-      </header>
+      </div>
 
-      {/* Share modal - dev only */}
-      {process.env.NODE_ENV === "development" && showShareModal && (
+      {/* ── 3D Character — positioned on the left, stays in view on keyboard open ── */}
+      <div className="absolute left-0 bottom-16 w-[55%] h-[55%] md:bottom-16 md:w-1/3 md:h-[70%] z-0">
+        <CharacterViewer
+          modelUrl={characterInfo?.modelUrl ?? null}
+          previewModelUrl={characterInfo?.modelPreviewUrl ?? null}
+          modelStatus={characterInfo?.modelStatus ?? null}
+          avatarUrl={characterInfo?.avatar ?? null}
+          state={characterState as "idle" | "listening" | "thinking" | "speaking" | "happy"}
+          audioLevel={botAudioLevel}
+        />
+      </div>
+
+      {/* ── Chat messages + Input overlay ── */}
+      <div className="relative z-10 h-full flex flex-col pointer-events-none">
+        {/* Scrollable messages — right 2/3 on desktop */}
+        <div className="flex-1 overflow-y-auto pt-16 pb-2 px-4 md:pl-[33.333%] pointer-events-auto">
+          {IS_DEV && rightPanel === "memory" ? (
+            <MemoryPanel getClient={getClient} />
+          ) : (
+            <FullChatLog
+              messages={messages as ChatMsg[]}
+              messagesEndRef={messagesEndRef}
+              isVoiceActive={isVoiceActive}
+              isBotSpeaking={isBotSpeaking}
+            />
+          )}
+        </div>
+
+        {/* Input bar — pinned to bottom */}
+        <div
+          className="shrink-0 px-3 pt-1 pointer-events-auto"
+          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 1rem))" }}
+        >
+          <ChatInputForm
+            textInput={textInput}
+            setTextInput={setTextInput}
+            handleSendText={handleSendText}
+            handleKeyDown={handleKeyDown}
+            isVoiceActive={isVoiceActive}
+            sttText={sttText}
+            isConnected={isConnected}
+            settings={settings}
+            isMuted={isMuted}
+            isBotSpeaking={isBotSpeaking}
+            toggleMute={toggleMute}
+            interruptBot={interruptBot}
+            stopVoice={stopVoice}
+            startVoice={startVoice}
+            characterName={characterInfo?.name}
+          />
+        </div>
+      </div>
+
+      {/* ── Share modal — dev only ── */}
+      {IS_DEV && showShareModal && (
         <div ref={shareRef} className="fixed top-14 left-2 right-2 md:left-auto md:right-4 md:w-96 rounded border border-border bg-surface shadow-xl z-50 animate-fade-in-up">
           <div className="p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -823,7 +733,6 @@ export default function ChatInterface() {
               Your session config is encrypted with AES-256-GCM and a passphrase before sharing.
             </p>
 
-            {/* Passphrase input */}
             <div className="space-y-1">
               <label className="text-[10px] font-medium text-muted uppercase tracking-wider">Passphrase</label>
               <input
@@ -840,7 +749,6 @@ export default function ChatInterface() {
               />
             </div>
 
-            {/* Generate button */}
             {!shareUrl && (
               <button
                 onClick={generateShareLink}
@@ -852,7 +760,6 @@ export default function ChatInterface() {
             )}
             {shareError && <p className="text-[11px] text-danger">{shareError}</p>}
 
-            {/* Encrypted URL row */}
             {shareUrl && (
               <div className="space-y-1">
                 <label className="text-[10px] font-medium text-muted uppercase tracking-wider">Encrypted URL</label>
@@ -874,7 +781,6 @@ export default function ChatInterface() {
               </div>
             )}
 
-            {/* Encrypted hash row */}
             {shareHash && (
               <div className="space-y-1">
                 <label className="text-[10px] font-medium text-muted uppercase tracking-wider">Encrypted Hash</label>
@@ -912,179 +818,27 @@ export default function ChatInterface() {
         </div>
       )}
 
-      {/* Error toast */}
+      {/* ── Error toast ── */}
       {error && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up">
-          <div className="rounded bg-danger/10 border border-danger/20 px-4 py-2 text-sm text-danger">
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up">
+          <div className="rounded-xl bg-danger/90 backdrop-blur-sm px-4 py-2 text-sm text-white shadow-lg">
             {error}
           </div>
         </div>
       )}
 
-      {/* Main stage: visual novel + optional history + sidebar */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
-        {/* Mobile: model + chat strip */}
-        <div className="flex md:hidden flex-col flex-1 min-h-0 overflow-hidden">
-          <div className="h-[33vh] relative flex-shrink-0 bg-background">
-            <div className="absolute inset-0">
-              <CharacterViewer
-                modelUrl={characterInfo?.modelUrl ?? null}
-                previewModelUrl={characterInfo?.modelPreviewUrl ?? null}
-                modelStatus={characterInfo?.modelStatus ?? null}
-                avatarUrl={characterInfo?.avatar ?? null}
-                state={characterState as "idle" | "listening" | "thinking" | "speaking" | "happy"}
-                audioLevel={botAudioLevel}
-              />
-            </div>
-          </div>
-          <div className="flex-1 flex flex-col min-h-0 border-t border-border bg-surface">
-            {IS_DEV && rightPanel === "memory" ? (
-              <div className="flex-1 overflow-y-auto min-h-0 p-2">
-                <MemoryPanel getClient={getClient} />
-              </div>
-            ) : (
-              <div className="flex-1 overflow-y-auto px-4 py-4 min-h-0">
-                <FullChatLog
-                  messages={messages as ChatMsg[]}
-                  messagesEndRef={messagesEndRef}
-                  isVoiceActive={isVoiceActive}
-                  isBotSpeaking={isBotSpeaking}
-                />
-              </div>
-            )}
-            <div className="shrink-0 px-4 py-2 border-t border-border">
-              <a
-                href="https://www.estuary-ai.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full text-center px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-light transition"
-              >
-                Build your own characters on Estuary!
-              </a>
-            </div>
-            <div className="shrink-0 px-20 py-2 border-t border-border bg-surface">
-              <ChatInputForm
-                textInput={textInput}
-                setTextInput={setTextInput}
-                handleSendText={handleSendText}
-                handleKeyDown={handleKeyDown}
-                isVoiceActive={isVoiceActive}
-                sttText={sttText}
-                isConnected={isConnected}
-                settings={settings}
-                isMuted={isMuted}
-                isBotSpeaking={isBotSpeaking}
-                toggleMute={toggleMute}
-                interruptBot={interruptBot}
-                stopVoice={stopVoice}
-                startVoice={startVoice}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Desktop: model + optional history + info */}
-        <div className="hidden md:flex flex-1 flex-row min-h-0 overflow-hidden w-full">
-          <div
-            className={`relative flex flex-col min-h-0 overflow-hidden ${
-              showMiddleColumn ? "w-1/2 flex-shrink-0" : "flex-1 min-w-0"
-            }`}
-          >
-            <div className="absolute inset-0">
-              <CharacterViewer
-                modelUrl={characterInfo?.modelUrl ?? null}
-                previewModelUrl={characterInfo?.modelPreviewUrl ?? null}
-                modelStatus={characterInfo?.modelStatus ?? null}
-                avatarUrl={characterInfo?.avatar ?? null}
-                state={characterState as "idle" | "listening" | "thinking" | "speaking" | "happy"}
-                audioLevel={botAudioLevel}
-              />
-            </div>
-            {(process.env.NODE_ENV !== "development" || rightPanel === "chat") && (
-              <div className="absolute inset-0 z-10 flex flex-col justify-end pointer-events-none">
-                <div className="h-16 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
-                <div className="bg-black/60 backdrop-blur-sm px-20 pb-2 pt-1 space-y-2 pointer-events-auto">
-                  <LatestExchangeView
-                    recentVNMessages={recentVNMessages}
-                    isVoiceActive={isVoiceActive}
-                    isBotSpeaking={isBotSpeaking}
-                    messages={messages as ChatMsg[]}
-                  />
-                </div>
-                <div className="flex-shrink-0 bg-black/70 backdrop-blur-sm px-20 pt-3 pb-6 border-t border-white/10 pointer-events-auto">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 min-w-0">
-                      <ChatInputForm
-                        textInput={textInput}
-                        setTextInput={setTextInput}
-                        handleSendText={handleSendText}
-                        handleKeyDown={handleKeyDown}
-                        isVoiceActive={isVoiceActive}
-                        sttText={sttText}
-                        isConnected={isConnected}
-                        settings={settings}
-                        isMuted={isMuted}
-                        isBotSpeaking={isBotSpeaking}
-                        toggleMute={toggleMute}
-                        interruptBot={interruptBot}
-                        stopVoice={stopVoice}
-                        startVoice={startVoice}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowChatHistory((v) => !v)}
-                      className="flex-shrink-0 rounded-lg border border-white/20 bg-black/40 p-2 text-white hover:bg-black/60 transition"
-                      title={showChatHistory ? "Hide chat log" : "Chat log"}
-                      aria-label={showChatHistory ? "Hide chat log" : "Chat log"}
-                    >
-                      <ChatLogToggleIcon />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {showMiddleColumn && (
-            <div className="hidden md:flex w-[30%] flex-shrink-0 flex-col min-w-0 border-l border-border bg-surface overflow-hidden">
-              {IS_DEV && rightPanel === "memory" ? (
-                <div className="flex-1 overflow-y-auto min-h-0 p-2">
-                  <MemoryPanel getClient={getClient} />
-                </div>
-              ) : (
-                <div className="flex-1 overflow-y-auto px-4 py-4 min-h-0">
-                  <FullChatLog
-                    messages={messages as ChatMsg[]}
-                    messagesEndRef={messagesEndRef}
-                    isVoiceActive={isVoiceActive}
-                    isBotSpeaking={isBotSpeaking}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          <aside className="hidden md:flex flex-col flex-shrink-0 w-1/5 border-l border-border bg-surface overflow-y-auto">
-            <div className="sticky top-0 py-6 px-4">
-              <CharacterInfoBlock characterInfo={characterInfo} />
-            </div>
-          </aside>
-        </div>
-      </div>
-
-      {/* Mobile: character info drawer */}
+      {/* ── Character info drawer ── */}
       {showInfoDrawer && (
         <>
           <button
             type="button"
             aria-label="Close character info"
-            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            className="fixed inset-0 bg-black/50 z-40"
             onClick={() => setShowInfoDrawer(false)}
           />
           <div
             ref={infoDrawerRef}
-            className="fixed top-0 right-0 h-full w-[min(100%,20rem)] z-50 md:hidden border-l border-border bg-surface shadow-xl flex flex-col transition-transform duration-200 ease-out translate-x-0"
+            className="fixed top-0 right-0 h-full w-[min(100%,20rem)] z-50 border-l border-border bg-surface shadow-xl flex flex-col transition-transform duration-200 ease-out translate-x-0"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
               <span className="text-sm font-medium">Character</span>
@@ -1106,7 +860,7 @@ export default function ChatInterface() {
         </>
       )}
 
-      {/* Settings drawer */}
+      {/* ── Settings drawer ── */}
       <SettingsDrawer
         open={showSettings}
         onClose={() => setShowSettings(false)}
