@@ -9,7 +9,7 @@
  * `https://share.estuary-ai.com/sa/{anchor_id}`.
  *
  * Flow:
- *   1. Call POST /api/v1/share-anchors/{id}/open (unauthenticated,
+ *   1. Call POST /api/v1/share/{id}/open (unauthenticated,
  *      rate-limited per anchor id).
  *   2. Stash the returned session + character in sessionStorage using
  *      the EXACT SAME KEYS the existing exchangeShareToken flow writes
@@ -72,7 +72,7 @@ export default function AnchorLanding() {
         (async () => {
             try {
                 const res = await fetch(
-                    `${ANCHOR_OPEN_BASE}/api/v1/share-anchors/${encodeURIComponent(anchorId)}/open`,
+                    `${ANCHOR_OPEN_BASE}/api/v1/share/${encodeURIComponent(anchorId)}/open`,
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
