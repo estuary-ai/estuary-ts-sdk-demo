@@ -361,6 +361,9 @@ export default function ChatInterface() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [sharePassphrase, setSharePassphrase] = useState("");
   const [rightPanel, setRightPanel] = useState<"chat" | "memory">("chat");
+  const [activeSidePanel, setActiveSidePanel] = useState<"character" | "memory" | "settings">("character");
+  const [sidePanelMenuOpen, setSidePanelMenuOpen] = useState(false);
+  const sidePanelMenuRef = useRef<HTMLDivElement>(null);
   const [characterInfo, setCharacterInfo] = useState<CharacterInfo | null>(null);
   const [showOverflow, setShowOverflow] = useState(false);
   const [showInfoDrawer, setShowInfoDrawer] = useState(false);
@@ -473,6 +476,18 @@ export default function ChatInterface() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showOverflow]);
+
+  // Close side panel dropdown on click outside
+  useEffect(() => {
+    if (!sidePanelMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (sidePanelMenuRef.current && !sidePanelMenuRef.current.contains(e.target as Node)) {
+        setSidePanelMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [sidePanelMenuOpen]);
 
   // Derive character state
   const hasPendingBotMessage = useMemo(
@@ -594,13 +609,15 @@ export default function ChatInterface() {
   }
 
   return (
-    <div className="h-[100dvh] relative overflow-hidden bg-background">
-      {/* ── Floating CTA — always visible, top center ── */}
+    <div className="h-[100dvh] overflow-hidden bg-background lg:flex">
+      {/* ── Main area ── */}
+      <div className="relative h-full lg:flex-1 lg:min-w-0 overflow-hidden">
+      {/* ── Floating CTA — top center on mobile/tablet, hidden on desktop (moved to side panel) ── */}
       <a
         href="https://www.estuary-ai.com/"
         target="_blank"
         rel="noopener noreferrer"
-        className="fixed left-1/2 -translate-x-1/2 z-50 px-6 py-2.5 md:px-8 md:py-3 rounded-full bg-accent text-white text-sm md:text-base font-semibold shadow-[0_2px_20px_rgba(90,173,207,0.45)] hover:bg-accent-light hover:shadow-[0_2px_24px_rgba(116,192,220,0.55)] hover:scale-[1.03] active:scale-[0.98] transition-all whitespace-nowrap"
+        className="lg:hidden absolute left-1/2 -translate-x-1/2 z-50 px-6 py-2.5 md:px-8 md:py-3 rounded-full bg-accent text-white text-sm md:text-base font-semibold shadow-[0_2px_20px_rgba(90,173,207,0.45)] hover:bg-accent-light hover:shadow-[0_2px_24px_rgba(116,192,220,0.55)] hover:scale-[1.03] active:scale-[0.98] transition-all whitespace-nowrap"
         style={{ top: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}
       >
         Start building on Estuary
@@ -608,7 +625,7 @@ export default function ChatInterface() {
 
       {/* ── Floating top-right controls ── */}
       <div
-        className="fixed right-3 z-40 flex items-center gap-2"
+        className="absolute right-3 z-40 flex items-center gap-2"
         style={{ top: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}
       >
         <ConnectionBadge state={connectionState} />
@@ -630,14 +647,14 @@ export default function ChatInterface() {
               <button
                 type="button"
                 onClick={() => { setShowInfoDrawer(true); setShowOverflow(false); }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition"
+                className="lg:hidden w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition"
               >
                 Character info
               </button>
               {IS_DEV && (
                 <>
                   <button onClick={() => { setRightPanel(p => p === "memory" ? "chat" : "memory"); setShowOverflow(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
+                    className="lg:hidden w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
                     {rightPanel === "memory" ? "Chat" : "Memory Map"}
                   </button>
                   <button onClick={() => { setShowShareModal(true); setShowOverflow(false); }}
@@ -645,7 +662,7 @@ export default function ChatInterface() {
                     Share
                   </button>
                   <button onClick={() => { setShowSettings(true); setShowOverflow(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
+                    className="lg:hidden w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
                     Settings
                   </button>
                 </>
@@ -676,16 +693,19 @@ export default function ChatInterface() {
       <div className="relative z-10 h-full flex flex-col pointer-events-none">
         {/* Scrollable messages — right 2/3 on desktop */}
         <div className="flex-1 overflow-y-auto pt-16 pb-2 px-4 md:pl-[33.333%] pointer-events-auto">
-          {IS_DEV && rightPanel === "memory" ? (
-            <MemoryPanel getClient={getClient} />
-          ) : (
+          {IS_DEV && rightPanel === "memory" && (
+            <div className="lg:hidden">
+              <MemoryPanel getClient={getClient} />
+            </div>
+          )}
+          <div className={IS_DEV && rightPanel === "memory" ? "hidden lg:block" : ""}>
             <FullChatLog
               messages={messages as ChatMsg[]}
               messagesEndRef={messagesEndRef}
               isVoiceActive={isVoiceActive}
               isBotSpeaking={isBotSpeaking}
             />
-          )}
+          </div>
         </div>
 
         {/* Input bar — pinned to bottom */}
@@ -710,6 +730,80 @@ export default function ChatInterface() {
             startVoice={startVoice}
             characterName={characterInfo?.name}
           />
+        </div>
+      </div>
+      </div>
+      {/* ── end Main area ── */}
+
+      {/* ── Desktop side panel — always visible at lg+ ── */}
+      <div className="hidden lg:flex w-80 shrink-0 h-full flex-col border-l border-border bg-surface">
+        {/* Panel selector + CTA */}
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border shrink-0">
+          {IS_DEV ? (
+            <div className="relative" ref={sidePanelMenuRef}>
+              <button
+                type="button"
+                onClick={() => setSidePanelMenuOpen(v => !v)}
+                className="flex items-center gap-2 text-sm font-semibold hover:text-accent-light transition cursor-pointer"
+              >
+                {activeSidePanel === "character" ? "Character" : activeSidePanel === "memory" ? "Memory Map" : "Settings"}
+                <svg className="text-muted" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {sidePanelMenuOpen && (
+                <div className="absolute left-0 top-full mt-1 w-44 rounded-lg border border-border bg-surface-light shadow-xl z-50 py-1 overflow-hidden">
+                  {([["character", "Character"], ["memory", "Memory Map"], ["settings", "Settings"]] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => { setActiveSidePanel(value); setSidePanelMenuOpen(false); }}
+                      className={`w-full text-left px-3 py-2 text-sm transition ${
+                        activeSidePanel === value
+                          ? "text-accent-light bg-accent/10"
+                          : "text-foreground hover:bg-surface hover:text-white"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className="text-sm font-semibold">Character</span>
+          )}
+          <a
+            href="https://www.estuary-ai.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 px-3 py-1.5 rounded-full bg-accent text-white text-xs font-semibold shadow-[0_2px_20px_rgba(90,173,207,0.45)] hover:bg-accent-light hover:shadow-[0_2px_24px_rgba(116,192,220,0.55)] hover:scale-[1.03] active:scale-[0.98] transition-all whitespace-nowrap"
+          >
+            Start building on Estuary
+          </a>
+        </div>
+
+        {/* Panel content */}
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {activeSidePanel === "character" && (
+            <div className="flex-1 overflow-y-auto py-4">
+              <CharacterInfoBlock characterInfo={characterInfo} />
+            </div>
+          )}
+          {activeSidePanel === "memory" && (
+            <MemoryPanel getClient={getClient} />
+          )}
+          {activeSidePanel === "settings" && (
+            <SettingsDrawer
+              open={true}
+              onClose={() => {}}
+              settings={settings}
+              onChange={setSettings}
+              onReconnect={handleReconnect}
+              isConnected={isConnected}
+              inline
+            />
+          )}
         </div>
       </div>
 

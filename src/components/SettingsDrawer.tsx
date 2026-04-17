@@ -10,6 +10,7 @@ interface SettingsDrawerProps {
   onChange: (settings: EstuarySettings) => void;
   onReconnect: () => void;
   isConnected: boolean;
+  inline?: boolean;
 }
 
 function Toggle({
@@ -131,12 +132,13 @@ export default function SettingsDrawer({
   onChange,
   onReconnect,
   isConnected,
+  inline,
 }: SettingsDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
 
   // Close on click outside
   useEffect(() => {
-    if (!open) return;
+    if (inline || !open) return;
     const handleClick = (e: MouseEvent) => {
       if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
         onClose();
@@ -144,21 +146,140 @@ export default function SettingsDrawer({
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [open, onClose]);
+  }, [inline, open, onClose]);
 
   // Close on Escape
   useEffect(() => {
-    if (!open) return;
+    if (inline || !open) return;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
+  }, [inline, open, onClose]);
 
   const update = <K extends keyof EstuarySettings>(key: K, value: EstuarySettings[K]) => {
     onChange({ ...settings, [key]: value });
   };
+
+  const settingsBody = (
+    <>
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+        {/* Voice section */}
+        <section className="space-y-4">
+          <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider">Voice</h3>
+
+          <Select
+            label="Voice Transport"
+            description="How audio is streamed. WebRTC (LiveKit) has lower latency, WebSocket is more compatible."
+            value={settings.voiceTransport}
+            onChange={(v) => update("voiceTransport", v as EstuarySettings["voiceTransport"])}
+            options={[
+              { value: "auto", label: "Auto (prefer LiveKit)" },
+              { value: "livekit", label: "LiveKit (WebRTC)" },
+              { value: "websocket", label: "WebSocket" },
+            ]}
+          />
+
+          <Toggle
+            label="Auto-interrupt on speech"
+            description="Automatically stop bot audio when you start speaking (barge-in)."
+            checked={settings.autoInterruptOnSpeech}
+            onChange={(v) => update("autoInterruptOnSpeech", v)}
+          />
+
+          <Toggle
+            label="Suppress mic during playback"
+            description="Mute your mic while the bot is speaking. Disables barge-in but prevents echo on devices without hardware AEC."
+            checked={settings.suppressMicDuringPlayback}
+            onChange={(v) => update("suppressMicDuringPlayback", v)}
+          />
+
+          <Select
+            label="Audio Sample Rate"
+            description="Higher rates give better quality but use more bandwidth."
+            value={String(settings.audioSampleRate)}
+            onChange={(v) => update("audioSampleRate", Number(v))}
+            options={[
+              { value: "16000", label: "16 kHz (default)" },
+              { value: "24000", label: "24 kHz" },
+              { value: "44100", label: "44.1 kHz (CD quality)" },
+              { value: "48000", label: "48 kHz (studio)" },
+            ]}
+          />
+        </section>
+
+        <div className="h-px bg-border" />
+
+        {/* Memory section */}
+        <section className="space-y-4">
+          <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider">Memory</h3>
+
+          <Toggle
+            label="Real-time memory"
+            description="Extract and store memories after each response. Enables the memory panel to update live."
+            checked={settings.realtimeMemory}
+            onChange={(v) => update("realtimeMemory", v)}
+          />
+        </section>
+
+        <div className="h-px bg-border" />
+
+        {/* Connection section */}
+        <section className="space-y-4">
+          <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider">Connection</h3>
+
+          <Toggle
+            label="Auto-reconnect"
+            description="Automatically reconnect when the connection drops."
+            checked={settings.autoReconnect}
+            onChange={(v) => update("autoReconnect", v)}
+          />
+
+          <NumberInput
+            label="Max reconnect attempts"
+            description="How many times to retry before giving up."
+            value={settings.maxReconnectAttempts}
+            onChange={(v) => update("maxReconnectAttempts", v)}
+            min={1}
+            max={20}
+            step={1}
+          />
+        </section>
+
+        <div className="h-px bg-border" />
+
+        {/* Developer section */}
+        <section className="space-y-4">
+          <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider">Developer</h3>
+
+          <Toggle
+            label="Debug logging"
+            description="Log SDK events and audio frames to the browser console."
+            checked={settings.debug}
+            onChange={(v) => update("debug", v)}
+          />
+        </section>
+      </div>
+
+      {/* Footer */}
+      <div className="shrink-0 px-5 py-4 border-t border-border space-y-2">
+        <p className="text-[10px] text-muted leading-relaxed">
+          Some settings require a reconnect to take effect.
+        </p>
+        <button
+          onClick={onReconnect}
+          disabled={!isConnected}
+          className="w-full py-2.5 rounded bg-accent text-white font-medium text-sm hover:bg-accent-light transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Reconnect with new settings
+        </button>
+      </div>
+    </>
+  );
+
+  if (inline) return settingsBody;
 
   return (
     <>
@@ -195,118 +316,7 @@ export default function SettingsDrawer({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
-          {/* Voice section */}
-          <section className="space-y-4">
-            <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider">Voice</h3>
-
-            <Select
-              label="Voice Transport"
-              description="How audio is streamed. WebRTC (LiveKit) has lower latency, WebSocket is more compatible."
-              value={settings.voiceTransport}
-              onChange={(v) => update("voiceTransport", v as EstuarySettings["voiceTransport"])}
-              options={[
-                { value: "auto", label: "Auto (prefer LiveKit)" },
-                { value: "livekit", label: "LiveKit (WebRTC)" },
-                { value: "websocket", label: "WebSocket" },
-              ]}
-            />
-
-            <Toggle
-              label="Auto-interrupt on speech"
-              description="Automatically stop bot audio when you start speaking (barge-in)."
-              checked={settings.autoInterruptOnSpeech}
-              onChange={(v) => update("autoInterruptOnSpeech", v)}
-            />
-
-            <Toggle
-              label="Suppress mic during playback"
-              description="Mute your mic while the bot is speaking. Disables barge-in but prevents echo on devices without hardware AEC."
-              checked={settings.suppressMicDuringPlayback}
-              onChange={(v) => update("suppressMicDuringPlayback", v)}
-            />
-
-            <Select
-              label="Audio Sample Rate"
-              description="Higher rates give better quality but use more bandwidth."
-              value={String(settings.audioSampleRate)}
-              onChange={(v) => update("audioSampleRate", Number(v))}
-              options={[
-                { value: "16000", label: "16 kHz (default)" },
-                { value: "24000", label: "24 kHz" },
-                { value: "44100", label: "44.1 kHz (CD quality)" },
-                { value: "48000", label: "48 kHz (studio)" },
-              ]}
-            />
-          </section>
-
-          <div className="h-px bg-border" />
-
-          {/* Memory section */}
-          <section className="space-y-4">
-            <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider">Memory</h3>
-
-            <Toggle
-              label="Real-time memory"
-              description="Extract and store memories after each response. Enables the memory panel to update live."
-              checked={settings.realtimeMemory}
-              onChange={(v) => update("realtimeMemory", v)}
-            />
-          </section>
-
-          <div className="h-px bg-border" />
-
-          {/* Connection section */}
-          <section className="space-y-4">
-            <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider">Connection</h3>
-
-            <Toggle
-              label="Auto-reconnect"
-              description="Automatically reconnect when the connection drops."
-              checked={settings.autoReconnect}
-              onChange={(v) => update("autoReconnect", v)}
-            />
-
-            <NumberInput
-              label="Max reconnect attempts"
-              description="How many times to retry before giving up."
-              value={settings.maxReconnectAttempts}
-              onChange={(v) => update("maxReconnectAttempts", v)}
-              min={1}
-              max={20}
-              step={1}
-            />
-          </section>
-
-          <div className="h-px bg-border" />
-
-          {/* Developer section */}
-          <section className="space-y-4">
-            <h3 className="text-[10px] font-semibold text-muted uppercase tracking-wider">Developer</h3>
-
-            <Toggle
-              label="Debug logging"
-              description="Log SDK events and audio frames to the browser console."
-              checked={settings.debug}
-              onChange={(v) => update("debug", v)}
-            />
-          </section>
-        </div>
-
-        {/* Footer */}
-        <div className="shrink-0 px-5 py-4 border-t border-border space-y-2">
-          <p className="text-[10px] text-muted leading-relaxed">
-            Some settings require a reconnect to take effect.
-          </p>
-          <button
-            onClick={onReconnect}
-            disabled={!isConnected}
-            className="w-full py-2.5 rounded bg-accent text-white font-medium text-sm hover:bg-accent-light transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Reconnect with new settings
-          </button>
-        </div>
+        {settingsBody}
       </div>
     </>
   );
