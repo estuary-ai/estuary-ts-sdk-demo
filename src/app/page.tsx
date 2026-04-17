@@ -19,6 +19,7 @@ interface CharacterInfo {
   id: string;
   name: string;
   tagline: string | null;
+  personality: string | null;
   avatar: string | null;
   modelUrl: string | null;
   modelPreviewUrl: string | null;

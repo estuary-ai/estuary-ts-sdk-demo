@@ -10,6 +10,7 @@ type CharacterInfo = {
   id: string;
   name: string;
   tagline: string | null;
+  personality: string | null;
   avatar: string | null;
   modelUrl: string | null;
   modelPreviewUrl: string | null;
@@ -302,6 +303,12 @@ function CharacterInfoBlock({ characterInfo }: { characterInfo: CharacterInfo | 
       {characterInfo?.tagline ? (
         <p className="text-sm text-foreground leading-relaxed">{characterInfo.tagline}</p>
       ) : null}
+      {characterInfo?.personality ? (
+        <div className="w-full text-left mt-1">
+          <p className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-1">Personality</p>
+          <p className="text-xs text-foreground/80 leading-relaxed">{characterInfo.personality}</p>
+        </div>
+      ) : null}
       <a
         href="https://www.estuary-ai.com/"
         target="_blank"
@@ -412,6 +419,7 @@ export default function ChatInterface() {
             id: data.id,
             name: data.name ?? "",
             tagline: data.tagline ?? null,
+            personality: data.personality ?? null,
             avatar: resolve(data.avatar ?? null),
             modelUrl: resolve(data.modelUrl ?? null),
             modelPreviewUrl: resolve(data.modelPreviewUrl ?? null),
@@ -437,6 +445,7 @@ export default function ChatInterface() {
         id: parsed.id,
         name: parsed.name ?? "",
         tagline: parsed.tagline ?? null,
+        personality: parsed.personality ?? null,
         avatar: resolve(parsed.avatar ?? null),
         modelUrl: resolve(parsed.modelUrl ?? null),
         modelPreviewUrl: resolve(parsed.modelPreviewUrl ?? null),
@@ -612,17 +621,6 @@ export default function ChatInterface() {
     <div className="h-[100dvh] overflow-hidden bg-background lg:flex">
       {/* ── Main area ── */}
       <div className="relative h-full lg:flex-1 lg:min-w-0 overflow-hidden">
-      {/* ── Floating CTA — top center on mobile/tablet, hidden on desktop (moved to side panel) ── */}
-      <a
-        href="https://www.estuary-ai.com/"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="lg:hidden absolute left-1/2 -translate-x-1/2 z-50 px-6 py-2.5 md:px-8 md:py-3 rounded-full bg-accent text-white text-sm md:text-base font-semibold shadow-[0_2px_20px_rgba(90,173,207,0.45)] hover:bg-accent-light hover:shadow-[0_2px_24px_rgba(116,192,220,0.55)] hover:scale-[1.03] active:scale-[0.98] transition-all whitespace-nowrap"
-        style={{ top: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}
-      >
-        Start building on Estuary
-      </a>
-
       {/* ── Floating top-right controls ── */}
       <div
         className="absolute right-3 z-40 flex items-center gap-2"
@@ -737,10 +735,10 @@ export default function ChatInterface() {
 
       {/* ── Desktop side panel — always visible at lg+ ── */}
       <div className="hidden lg:flex w-80 shrink-0 h-full flex-col border-l border-border bg-surface">
-        {/* Panel selector + CTA */}
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border shrink-0">
+        {/* Panel selector */}
+        <div className="flex items-center px-4 py-3 border-b border-border shrink-0">
           {IS_DEV ? (
-            <div className="relative" ref={sidePanelMenuRef}>
+            <div className="relative flex-1" ref={sidePanelMenuRef}>
               <button
                 type="button"
                 onClick={() => setSidePanelMenuOpen(v => !v)}
@@ -773,14 +771,6 @@ export default function ChatInterface() {
           ) : (
             <span className="text-sm font-semibold">Character</span>
           )}
-          <a
-            href="https://www.estuary-ai.com/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 px-3 py-1.5 rounded-full bg-accent text-white text-xs font-semibold shadow-[0_2px_20px_rgba(90,173,207,0.45)] hover:bg-accent-light hover:shadow-[0_2px_24px_rgba(116,192,220,0.55)] hover:scale-[1.03] active:scale-[0.98] transition-all whitespace-nowrap"
-          >
-            Start building on Estuary
-          </a>
         </div>
 
         {/* Panel content */}
