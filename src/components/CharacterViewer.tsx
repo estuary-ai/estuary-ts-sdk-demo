@@ -167,7 +167,7 @@ function AdaptiveFov() {
     const aspect = size.width / size.height;
     // Base FOV of 45 at ~1:1 aspect. Widen for narrow containers so the
     // model stays fully visible; keep 45 for wide/square containers.
-    cam.fov = THREE.MathUtils.clamp(aspect < 1 ? 45 / aspect : 45, 30, 75);
+    cam.fov = THREE.MathUtils.clamp(aspect < 1 ? 45 / aspect : 45, 30, 95);
     cam.updateProjectionMatrix();
   }, [camera, size]);
   return null;

@@ -675,8 +675,8 @@ export default function ChatInterface() {
         </div>
       </div>
 
-      {/* ── 3D Character — positioned on the left, stays in view on keyboard open ── */}
-      <div className="absolute left-0 bottom-16 w-[55%] h-[55%] md:bottom-16 md:w-1/3 md:h-[70%] z-0">
+      {/* ── 3D Character — left 1/3, bottom-aligned ── */}
+      <div className="absolute left-0 bottom-16 w-2/5 h-[50%] lg:h-[70%] z-0">
         <CharacterViewer
           modelUrl={characterInfo?.modelUrl ?? null}
           previewModelUrl={characterInfo?.modelPreviewUrl ?? null}
@@ -689,8 +689,8 @@ export default function ChatInterface() {
 
       {/* ── Chat messages + Input overlay ── */}
       <div className="relative z-10 h-full flex flex-col pointer-events-none">
-        {/* Scrollable messages — right 2/3 on desktop */}
-        <div className="flex-1 overflow-y-auto pt-16 pb-2 px-4 md:pl-[33.333%] pointer-events-auto">
+        {/* Scrollable messages — right 2/3 */}
+        <div className="flex-1 overflow-y-auto pt-16 pb-2 px-4 pl-[40%] pointer-events-auto">
           {IS_DEV && rightPanel === "memory" && (
             <div className="lg:hidden">
               <MemoryPanel getClient={getClient} />
