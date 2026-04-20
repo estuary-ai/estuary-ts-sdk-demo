@@ -32,24 +32,6 @@ async function exchangeShareToken(token: string): Promise<ConnectConfig> {
   };
 }
 
-/**
- * Get or create a unique persistent player_id for a share token visitor.
- * Scoped per character so the same visitor gets different identities per character.
- * Stored in localStorage so returning visitors keep their identity.
- */
-function getOrCreateSharePlayerId(characterId: string, basePlayerId: string): string {
-  const storageKey = `estuary-player-id:${characterId}`;
-  const existing = localStorage.getItem(storageKey);
-  if (existing) return existing;
-
-  // Generate unique player_id: share_{tokenPrefix}_{random8chars}
-  const tokenPrefix = basePlayerId.replace("share:", "");
-  const random = Math.random().toString(36).slice(2, 10);
-  const uniquePlayerId = `share_${tokenPrefix}_${random}`;
-  localStorage.setItem(storageKey, uniquePlayerId);
-  return uniquePlayerId;
-}
-
 function decodeLegacyConfig(hash: string): ConnectConfig | null {
   try {
     const raw = hash.startsWith("#") ? hash.slice(1) : hash;
@@ -105,11 +87,8 @@ export default function ConnectPage() {
       setIsExchangingShare(true);
       exchangeShareToken(shareToken)
         .then((creds) => {
-          // Override server's shared player_id with a unique per-visitor id (D-10)
-          const uniquePlayerId = getOrCreateSharePlayerId(creds.characterId, creds.playerId);
-          const updatedCreds = { ...creds, playerId: uniquePlayerId };
-          setConfig(updatedCreds);
-          sessionStorage.setItem("estuary-config", JSON.stringify(updatedCreds));
+          setConfig(creds);
+          sessionStorage.setItem("estuary-config", JSON.stringify(creds));
           router.push("/chat");
         })
         .catch((err) => {
