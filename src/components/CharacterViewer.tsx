@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useMemo, useState, useCallback, useEffect, Suspense } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -27,21 +27,28 @@ interface CharacterViewerProps {
   state: ViewerState;
   /** Loading progress 0-100, shown when model is downloading or generating */
   progress?: number;
+  /** Bot audio level 0-1 for reactive speaking animation */
+  audioLevel?: number;
 }
 
 // ─── 3D Model Inner Component ───────────────────────────────────
 
 interface GLBModelProps {
   url: string;
-  isSpeaking: boolean;
+  state: ViewerState;
   isPreview: boolean;
+  audioLevel: number;
 }
 
-function GLBModel({ url, isSpeaking, isPreview }: GLBModelProps) {
+function GLBModel({ url, state, isPreview, audioLevel }: GLBModelProps) {
+  const isSpeaking = state === "speaking";
+  const isListening = state === "listening";
+  const isThinking = state === "thinking";
   const { scene } = useGLTF(url);
   const groupRef = useRef<THREE.Group>(null);
   const scaleRef = useRef(1);
   const yOffsetRef = useRef(0);
+  const audioLevelRef = useRef(0);
   const speakingGlowColor = useMemo(() => new THREE.Color("#00f0ff"), []);
 
   // Clone scene, isolate materials, and extract glow materials
@@ -84,7 +91,7 @@ function GLBModel({ url, isSpeaking, isPreview }: GLBModelProps) {
     return { model: clone, glowMaterials: glowMats };
   }, [scene]);
 
-  useFrame((state, delta) => {
+  useFrame((frameState, delta) => {
     if (!groupRef.current) return;
 
     const smoothing = 1 - Math.exp(-delta * 7.5);
@@ -93,15 +100,40 @@ function GLBModel({ url, isSpeaking, isPreview }: GLBModelProps) {
     let targetGlow = 0;
 
     if (isPreview) {
-      const previewWave = (Math.sin(state.clock.elapsedTime * 2.2) + 1) * 0.5;
+      const previewWave = (Math.sin(frameState.clock.elapsedTime * 2.2) + 1) * 0.5;
       targetScale = 1 + previewWave * 0.035;
-      targetGlow = 0.24 + previewWave * 0.1;
+      targetGlow = 0.12 + previewWave * 0.06;
     } else if (isSpeaking) {
-      const primaryWave = (Math.sin(state.clock.elapsedTime * 2.6 - Math.PI / 2) + 1) * 0.5;
-      const secondaryWave = (Math.sin(state.clock.elapsedTime * 5.2 + 0.6) + 1) * 0.5;
-      targetScale = 1.01 + primaryWave * 0.03 + secondaryWave * 0.008;
-      targetYOffset = primaryWave * 0.07;
-      targetGlow = 0.15 + primaryWave * 0.35 + secondaryWave * 0.1;
+      // Fast attack / moderate release for mouth-sync feel
+      const attack = 1 - Math.exp(-delta * 18);   // ~55ms to peak
+      const release = 1 - Math.exp(-delta * 10);   // ~100ms decay
+      const alpha = audioLevel > audioLevelRef.current ? attack : release;
+      audioLevelRef.current = THREE.MathUtils.lerp(audioLevelRef.current, audioLevel, alpha);
+      const level = audioLevelRef.current;
+      // Subtle base pulse + direct audio-reactive glow
+      const pulse = (Math.sin(frameState.clock.elapsedTime * 3.0) + 1) * 0.5;
+      targetScale = 1.005 + level * 0.045;
+      targetYOffset = level * 0.07;
+      targetGlow = 0.01 + pulse * 0.015 + level * 0.04;
+    } else if (isListening) {
+      // Gentle breathing — character is alive and attentive
+      const t = frameState.clock.elapsedTime;
+      const breath = (Math.sin(t * 1.4) + 1) * 0.5;
+      targetScale = 1 + breath * 0.012;
+      targetYOffset = breath * 0.015;
+      targetGlow = 0.015 + (Math.sin(t * 1.8) + 1) * 0.5 * 0.01;
+      audioLevelRef.current = THREE.MathUtils.lerp(audioLevelRef.current, 0, smoothing);
+    } else if (isThinking) {
+      // Slightly faster pulse — processing
+      const t = frameState.clock.elapsedTime;
+      const pulse = (Math.sin(t * 2.5) + 1) * 0.5;
+      targetScale = 1 + pulse * 0.015;
+      targetYOffset = pulse * 0.01;
+      targetGlow = 0.02 + pulse * 0.015;
+      audioLevelRef.current = THREE.MathUtils.lerp(audioLevelRef.current, 0, smoothing);
+    } else {
+      // Decay audio level smoothly when not speaking
+      audioLevelRef.current = THREE.MathUtils.lerp(audioLevelRef.current, 0, smoothing);
     }
 
     scaleRef.current = THREE.MathUtils.lerp(scaleRef.current, targetScale, smoothing);
@@ -124,6 +156,21 @@ function GLBModel({ url, isSpeaking, isPreview }: GLBModelProps) {
       <primitive object={model} />
     </group>
   );
+}
+
+// ─── Adaptive FOV — scales character to fill container ──────────
+
+function AdaptiveFov() {
+  const { camera, size } = useThree();
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const aspect = size.width / size.height;
+    // Base FOV of 45 at ~1:1 aspect. Widen for narrow containers so the
+    // model stays fully visible; keep 45 for wide/square containers.
+    cam.fov = THREE.MathUtils.clamp(aspect < 1 ? 45 / aspect : 45, 30, 95);
+    cam.updateProjectionMatrix();
+  }, [camera, size]);
+  return null;
 }
 
 // ─── Loading Overlay ────────────────────────────────────────────
@@ -177,6 +224,7 @@ export default function CharacterViewer({
   avatarUrl,
   state,
   progress,
+  audioLevel = 0,
 }: CharacterViewerProps) {
   const isMobile = useIsMobile();
   const isSpeaking = state === "speaking";
@@ -185,6 +233,45 @@ export default function CharacterViewer({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const controlsRef = useRef<any>(null);
   const prevStateRef = useRef<ViewerState>(state);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const smoothedAudioRef = useRef(0);
+  const rawAudioRef = useRef(0);
+
+  // Keep raw audio ref in sync with prop
+  rawAudioRef.current = audioLevel;
+
+  // Smoothed --audio-level CSS custom property via requestAnimationFrame
+  useEffect(() => {
+    if (!isSpeaking) {
+      // Decay to zero smoothly when speaking stops
+      let decayId: number;
+      const decay = () => {
+        smoothedAudioRef.current *= 0.88; // exponential decay
+        if (smoothedAudioRef.current < 0.005) {
+          smoothedAudioRef.current = 0;
+          containerRef.current?.style.setProperty('--audio-level', '0');
+          return;
+        }
+        containerRef.current?.style.setProperty('--audio-level', String(smoothedAudioRef.current));
+        decayId = requestAnimationFrame(decay);
+      };
+      decayId = requestAnimationFrame(decay);
+      return () => cancelAnimationFrame(decayId);
+    }
+
+    let rafId: number;
+    const update = () => {
+      const raw = rawAudioRef.current;
+      const current = smoothedAudioRef.current;
+      // Lerp: fast attack (0.18), slower release (0.08)
+      const alpha = raw > current ? 0.18 : 0.08;
+      smoothedAudioRef.current = current + (raw - current) * alpha;
+      containerRef.current?.style.setProperty('--audio-level', String(smoothedAudioRef.current));
+      rafId = requestAnimationFrame(update);
+    };
+    rafId = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(rafId);
+  }, [isSpeaking]);
 
   // Reset camera rotation when entering voice conversation
   useEffect(() => {
@@ -215,22 +302,27 @@ export default function CharacterViewer({
   // Show loading when model is being fetched or generating
   const showLoading = !hasModel && (isGenerating || isPreviewReady);
 
+  const isListeningState = state === "listening";
+  const isThinkingState = state === "thinking";
+  const isVoiceSession = state !== "idle" && state !== "happy";
   const containerClass = [
     "character-viewer",
     isSpeaking && "character-viewer--speaking",
+    isListeningState && "character-viewer--listening",
+    isThinkingState && "character-viewer--thinking",
   ].filter(Boolean).join(" ");
 
   // No model and not generating → show profile pic or placeholder
   if (!hasModel && !showLoading) {
     return (
-      <div className={containerClass}>
+      <div ref={containerRef} className={containerClass}>
         <ProfileFallback avatarUrl={proxiedAvatar} />
       </div>
     );
   }
 
   return (
-    <div className={containerClass}>
+    <div ref={containerRef} className={containerClass}>
       {showLoading && (
         <LoadingOverlay
           progress={progress}
@@ -239,32 +331,44 @@ export default function CharacterViewer({
       )}
       {hasModel && (
         <Canvas
-          camera={{ position: [0, 0.3, 4.8], fov: 40 }}
+          camera={{ position: [0, 0.2, 3.2], fov: 45 }}
           gl={{ alpha: true, antialias: !isMobile, stencil: false }}
           dpr={[1, 2]}
           style={{ background: "transparent" }}
         >
+          <AdaptiveFov />
           <ambientLight intensity={0.6} />
           <directionalLight position={[5, 5, 5]} intensity={0.8} />
           <directionalLight position={[-3, 2, -3]} intensity={0.3} />
           <Suspense fallback={null}>
             <GLBModel
               url={activeModelUrl!}
-              isSpeaking={isSpeaking}
+              state={state}
               isPreview={isPreviewModel}
+              audioLevel={audioLevel}
             />
           </Suspense>
           <OrbitControls
             ref={controlsRef}
             enablePan={false}
             enableZoom={true}
-            minDistance={2}
+            minDistance={1.5}
             maxDistance={10}
             autoRotate={(state === "idle" || state === "happy") && !isDragPaused}
             autoRotateSpeed={1.2}
             onEnd={handleDragEnd}
           />
         </Canvas>
+      )}
+
+      {/* Mic status pill — visible during voice session */}
+      {isVoiceSession && (
+        <div className="character-viewer__status-pill">
+          <span className={`character-viewer__status-dot character-viewer__status-dot--${state}`} />
+          <span className="character-viewer__status-label">
+            {state === "listening" ? "Listening" : state === "thinking" ? "Thinking..." : "Speaking"}
+          </span>
+        </div>
       )}
     </div>
   );

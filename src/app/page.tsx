@@ -9,15 +9,55 @@ const DEFAULT_SERVER_URL = IS_DEV ? "http://localhost:4001" : "https://api.estua
 
 interface ConnectConfig {
   serverUrl: string;
-  apiKey: string;
+  apiKey?: string;
+  sessionToken?: string;
   characterId: string;
   playerId: string;
 }
 
-async function exchangeShareToken(token: string): Promise<ConnectConfig> {
-  const serverUrl = process.env.NEXT_PUBLIC_API_URL || DEFAULT_SERVER_URL;
-  const res = await fetch(`${serverUrl}/api/v1/share/${token}/exchange`, {
+interface CharacterInfo {
+  id: string;
+  name: string;
+  tagline: string | null;
+  personality: string | null;
+  avatar: string | null;
+  modelUrl: string | null;
+  modelPreviewUrl: string | null;
+  modelStatus: string | null;
+  sourceImageUrl: string | null;
+}
+
+/** Share tokens from share.estuary-ai.com are exchanged on Estuary Cloud, not a local dev server. */
+const SHARE_EXCHANGE_BASE =
+  process.env.NEXT_PUBLIC_SHARE_EXCHANGE_URL?.replace(/\/$/, "") ||
+  "https://api.estuary-ai.com";
+
+const RECIPIENT_COOKIE = "est_recipient_id";
+const RECIPIENT_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+
+/** Read or create a persistent per-recipient UUID so isolated shares have stable memory. */
+function getOrCreateRecipientId(): string {
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${RECIPIENT_COOKIE}=([^;]+)`)
+  );
+  if (match) return decodeURIComponent(match[1]);
+  const id = crypto.randomUUID();
+  document.cookie =
+    `${RECIPIENT_COOKIE}=${encodeURIComponent(id)}` +
+    `; max-age=${RECIPIENT_COOKIE_MAX_AGE}` +
+    `; path=/` +
+    `; SameSite=Lax`;
+  return id;
+}
+
+async function exchangeShareToken(
+  token: string
+): Promise<{ config: ConnectConfig; character: CharacterInfo | null }> {
+  const recipientId = getOrCreateRecipientId();
+  const res = await fetch(`${SHARE_EXCHANGE_BASE}/api/v1/share/${token}/exchange`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recipientId }),
   });
   if (!res.ok) {
     const detail = await res.text();
@@ -25,10 +65,13 @@ async function exchangeShareToken(token: string): Promise<ConnectConfig> {
   }
   const data = await res.json();
   return {
-    serverUrl: data.serverUrl || DEFAULT_SERVER_URL,
-    apiKey: data.apiKey,
-    characterId: data.characterId,
-    playerId: data.playerId,
+    config: {
+      serverUrl: data.serverUrl || DEFAULT_SERVER_URL,
+      sessionToken: data.sessionToken,
+      characterId: data.characterId,
+      playerId: data.playerId,
+    },
+    character: (data.character as CharacterInfo | undefined) ?? null,
   };
 }
 
@@ -37,7 +80,7 @@ function decodeLegacyConfig(hash: string): ConnectConfig | null {
     const raw = hash.startsWith("#") ? hash.slice(1) : hash;
     if (!raw) return null;
     const parsed = JSON.parse(atob(raw));
-    if (parsed.serverUrl && parsed.apiKey && parsed.characterId && parsed.playerId) {
+    if (parsed.serverUrl && (parsed.apiKey || parsed.sessionToken) && parsed.characterId && parsed.playerId) {
       return parsed as ConnectConfig;
     }
     return null;
@@ -49,7 +92,7 @@ function decodeLegacyConfig(hash: string): ConnectConfig | null {
 async function decryptConfig(hash: string, passphrase?: string): Promise<ConnectConfig> {
   const plaintext = await decryptPayload(hash, passphrase);
   const parsed = JSON.parse(plaintext);
-  if (!parsed.serverUrl || !parsed.apiKey || !parsed.characterId || !parsed.playerId) {
+  if (!parsed.serverUrl || (!parsed.apiKey && !parsed.sessionToken) || !parsed.characterId || !parsed.playerId) {
     throw new Error("Invalid config");
   }
   return parsed as ConnectConfig;
@@ -85,13 +128,21 @@ export default function ConnectPage() {
     if (shareToken) {
       setIsFromLink(true);
       setIsExchangingShare(true);
+      // Pre-clear any prior share's stash so a new link cannot inherit stale
+      // character metadata in the same tab.
+      sessionStorage.removeItem("estuary-config");
+      sessionStorage.removeItem("estuary-character");
       exchangeShareToken(shareToken)
-        .then((creds) => {
-          setConfig(creds);
+        .then(({ config: creds, character }) => {
           sessionStorage.setItem("estuary-config", JSON.stringify(creds));
+          if (character) {
+            sessionStorage.setItem("estuary-character", JSON.stringify(character));
+          }
           router.push("/chat");
         })
         .catch((err) => {
+          sessionStorage.removeItem("estuary-config");
+          sessionStorage.removeItem("estuary-character");
           setIsFromLink(false);
           setIsExchangingShare(false);
           setHashError(
@@ -131,7 +182,7 @@ export default function ConnectPage() {
 
   // Auto-connect from shared link (legacy or after decryption)
   useEffect(() => {
-    if (isFromLink && config.apiKey) {
+    if (isFromLink && (config.apiKey || config.sessionToken)) {
       sessionStorage.setItem("estuary-config", JSON.stringify(config));
       router.push("/chat");
     }
