@@ -11,10 +11,12 @@
  * Flow:
  *   1. Call POST /api/v1/share/{id}/open (unauthenticated,
  *      rate-limited per anchor id).
- *   2. Stash the returned session + character in sessionStorage using
- *      the EXACT SAME KEYS the existing exchangeShareToken flow writes
- *      (see src/app/page.tsx lines 134-140) so /chat rehydrates unchanged.
- *   3. Replace the URL with /chat so back navigation doesn't re-trigger.
+ *   2a. Default: Stash the returned session + character in sessionStorage
+ *       using the EXACT SAME KEYS the existing exchangeShareToken flow
+ *       writes (see src/app/page.tsx lines 134-140) so /chat rehydrates
+ *       unchanged.
+ *   2b. mode=ar: Redirect to the Mattercraft WebAR experience with the
+ *       pre-baked session credentials in the URL hash fragment.
  *
  * Errors:
  *   - 404 -> "Anchor unavailable" (revoked or never existed)
@@ -23,7 +25,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const DEFAULT_SERVER_URL = IS_DEV
@@ -34,6 +36,9 @@ const DEFAULT_SERVER_URL = IS_DEV
 const ANCHOR_OPEN_BASE =
     process.env.NEXT_PUBLIC_SHARE_EXCHANGE_URL?.replace(/\/$/, "") ||
     "https://api.estuary-ai.com";
+
+const MATTERCRAFT_AR_URL =
+    process.env.NEXT_PUBLIC_MATTERCRAFT_AR_URL || "";
 
 interface CharacterInfo {
     id: string;
@@ -58,8 +63,10 @@ interface OpenAnchorResponse {
 
 export default function AnchorLanding() {
     const params = useParams<{ id: string }>();
+    const searchParams = useSearchParams();
     const router = useRouter();
     const [error, setError] = useState<string | null>(null);
+    const isAR = searchParams?.get("mode") === "ar";
 
     useEffect(() => {
         const anchorId = params?.id;
@@ -92,6 +99,23 @@ export default function AnchorLanding() {
                 }
 
                 const data: OpenAnchorResponse = await res.json();
+
+                if (isAR) {
+                    if (!MATTERCRAFT_AR_URL) {
+                        setError("AR experience is not configured.");
+                        return;
+                    }
+                    const serverUrl = data.serverUrl || DEFAULT_SERVER_URL;
+                    const hash = new URLSearchParams({
+                        sst: data.sessionToken,
+                        cid: data.characterId,
+                        pid: data.playerId,
+                        srv: serverUrl,
+                        name: data.character?.name || "",
+                    }).toString();
+                    window.location.href = `${MATTERCRAFT_AR_URL}#${hash}`;
+                    return;
+                }
 
                 // Pre-clear any prior share session so a new anchor cannot
                 // inherit stale character metadata in the same tab. Matches
@@ -131,20 +155,22 @@ export default function AnchorLanding() {
         return () => {
             cancelled = true;
         };
-    }, [params, router]);
+    }, [params, searchParams, router, isAR]);
 
     return (
         <main className="flex min-h-dvh items-center justify-center p-6 text-center">
             {error ? (
                 <div className="max-w-sm space-y-2">
                     <h1 className="text-lg font-medium">
-                        Can't open this anchor
+                        Can&apos;t open this anchor
                     </h1>
                     <p className="text-sm text-muted-foreground">{error}</p>
                 </div>
             ) : (
                 <div className="max-w-sm space-y-2">
-                    <h1 className="text-lg font-medium">Opening character…</h1>
+                    <h1 className="text-lg font-medium">
+                        {isAR ? "Launching AR experience…" : "Opening character…"}
+                    </h1>
                     <p className="text-sm text-muted-foreground">
                         One moment while we set up the conversation.
                     </p>
