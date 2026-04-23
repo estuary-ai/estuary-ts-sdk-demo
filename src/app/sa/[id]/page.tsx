@@ -37,10 +37,14 @@ const ANCHOR_OPEN_BASE =
     process.env.NEXT_PUBLIC_SHARE_EXCHANGE_URL?.replace(/\/$/, "") ||
     "https://api.estuary-ai.com";
 
-// Zappar-hosted Mattercraft project — webxr.run triggers iOS App Clips.
+// Pre-resolved e.webxr.run URL (NOT webxr.run/{PID}): iOS App Clip AASA is
+// served on e.webxr.run (verified at /.well-known/apple-app-site-association),
+// so NFC tap auto-activates the App Clip only when the URL targets this host.
+// The `url=` param holds the encoded Mattercraft scene URL; our session-token
+// payload gets appended inside that value via %3F/%26 below.
 const MATTERCRAFT_AR_URL =
     process.env.NEXT_PUBLIC_MATTERCRAFT_AR_URL ||
-    "https://webxr.run/ZwEy4xL788edG";
+    "https://e.webxr.run/?url=https%3A%2F%2Fr7nmn.zappar-us.io%2F7730044038342086614%2F";
 
 interface CharacterInfo {
     id: string;
@@ -107,18 +111,19 @@ export default function AnchorLanding() {
                         setError("AR experience is not configured.");
                         return;
                     }
-                    // Hash fragment — webxr.run 302-strips query params server-side,
-                    // but browsers preserve `#` through redirects, and iOS App Clip
-                    // invocation carries `window.location.href` (hash included) into
-                    // the clip. The Mattercraft scene reads `window.location.hash`.
-                    const hash = new URLSearchParams({
-                        sst: data.sessionToken,
-                        cid: data.characterId,
-                        pid: data.playerId,
-                        srv: data.serverUrl || DEFAULT_SERVER_URL,
-                        name: data.character?.name || "",
-                    }).toString();
-                    window.location.href = `${MATTERCRAFT_AR_URL}#${hash}`;
+                    // Pre-encode `?` (%3F) and `&` (%26) so the payload rides
+                    // inside the `url=` param value on e.webxr.run. After one
+                    // decode layer, the Mattercraft scene sees real query params
+                    // on its own URL. Mirrors estuary-website's QR pattern in
+                    // src/components/demo/CrossPlatformPhase.tsx:37.
+                    const sst = encodeURIComponent(data.sessionToken);
+                    const cid = encodeURIComponent(data.characterId);
+                    const pid = encodeURIComponent(data.playerId);
+                    const srv = encodeURIComponent(
+                        data.serverUrl || DEFAULT_SERVER_URL,
+                    );
+                    const name = encodeURIComponent(data.character?.name || "");
+                    window.location.href = `${MATTERCRAFT_AR_URL}%3Fsst=${sst}%26cid=${cid}%26pid=${pid}%26srv=${srv}%26name=${name}`;
                     return;
                 }
 
