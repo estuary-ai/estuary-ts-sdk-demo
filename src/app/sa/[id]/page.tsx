@@ -37,8 +37,10 @@ const ANCHOR_OPEN_BASE =
     process.env.NEXT_PUBLIC_SHARE_EXCHANGE_URL?.replace(/\/$/, "") ||
     "https://api.estuary-ai.com";
 
+// Zappar-hosted Mattercraft project — webxr.run triggers iOS App Clips.
 const MATTERCRAFT_AR_URL =
-    process.env.NEXT_PUBLIC_MATTERCRAFT_AR_URL || "";
+    process.env.NEXT_PUBLIC_MATTERCRAFT_AR_URL ||
+    "https://webxr.run/ZwEy4xL788edG";
 
 interface CharacterInfo {
     id: string;
@@ -105,15 +107,18 @@ export default function AnchorLanding() {
                         setError("AR experience is not configured.");
                         return;
                     }
-                    const serverUrl = data.serverUrl || DEFAULT_SERVER_URL;
-                    const hash = new URLSearchParams({
-                        sst: data.sessionToken,
-                        cid: data.characterId,
-                        pid: data.playerId,
-                        srv: serverUrl,
-                        name: data.character?.name || "",
-                    }).toString();
-                    window.location.href = `${MATTERCRAFT_AR_URL}#${hash}`;
+                    // Pre-encode `?` (%3F) and `&` (%26) so the payload survives
+                    // webxr.run's redirect into the Mattercraft scene as a single
+                    // decode layer. Mirrors estuary-website's QR-link pattern in
+                    // src/components/demo/CrossPlatformPhase.tsx:37.
+                    const sst = encodeURIComponent(data.sessionToken);
+                    const cid = encodeURIComponent(data.characterId);
+                    const pid = encodeURIComponent(data.playerId);
+                    const srv = encodeURIComponent(
+                        data.serverUrl || DEFAULT_SERVER_URL,
+                    );
+                    const name = encodeURIComponent(data.character?.name || "");
+                    window.location.href = `${MATTERCRAFT_AR_URL}%3Fsst=${sst}%26cid=${cid}%26pid=${pid}%26srv=${srv}%26name=${name}`;
                     return;
                 }
 
