@@ -111,11 +111,11 @@ export default function AnchorLanding() {
                         setError("AR experience is not configured.");
                         return;
                     }
-                    // Pre-encode `?` (%3F) and `&` (%26) so the payload rides
+                    // Pre-encode `#` (%23) and `&` (%26) so the payload rides
                     // inside the `url=` param value on e.webxr.run. After one
-                    // decode layer, the Mattercraft scene sees real query params
-                    // on its own URL. Mirrors estuary-website's QR pattern in
-                    // src/components/demo/CrossPlatformPhase.tsx:37.
+                    // decode layer, the Mattercraft scene loads with a real hash
+                    // fragment — which is what estuary-web-ar-share/index.ts reads
+                    // via `location.hash` to extract credentials.
                     const sst = encodeURIComponent(data.sessionToken);
                     const cid = encodeURIComponent(data.characterId);
                     const pid = encodeURIComponent(data.playerId);
@@ -123,7 +123,7 @@ export default function AnchorLanding() {
                         data.serverUrl || DEFAULT_SERVER_URL,
                     );
                     const name = encodeURIComponent(data.character?.name || "");
-                    window.location.href = `${MATTERCRAFT_AR_URL}%3Fsst=${sst}%26cid=${cid}%26pid=${pid}%26srv=${srv}%26name=${name}`;
+                    window.location.href = `${MATTERCRAFT_AR_URL}%23sst=${sst}%26cid=${cid}%26pid=${pid}%26srv=${srv}%26name=${name}`;
                     return;
                 }
 
