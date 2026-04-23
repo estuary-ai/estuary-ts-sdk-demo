@@ -107,18 +107,18 @@ export default function AnchorLanding() {
                         setError("AR experience is not configured.");
                         return;
                     }
-                    // Pre-encode `?` (%3F) and `&` (%26) so the payload survives
-                    // webxr.run's redirect into the Mattercraft scene as a single
-                    // decode layer. Mirrors estuary-website's QR-link pattern in
-                    // src/components/demo/CrossPlatformPhase.tsx:37.
-                    const sst = encodeURIComponent(data.sessionToken);
-                    const cid = encodeURIComponent(data.characterId);
-                    const pid = encodeURIComponent(data.playerId);
-                    const srv = encodeURIComponent(
-                        data.serverUrl || DEFAULT_SERVER_URL,
-                    );
-                    const name = encodeURIComponent(data.character?.name || "");
-                    window.location.href = `${MATTERCRAFT_AR_URL}%3Fsst=${sst}%26cid=${cid}%26pid=${pid}%26srv=${srv}%26name=${name}`;
+                    // Hash fragment — webxr.run 302-strips query params server-side,
+                    // but browsers preserve `#` through redirects, and iOS App Clip
+                    // invocation carries `window.location.href` (hash included) into
+                    // the clip. The Mattercraft scene reads `window.location.hash`.
+                    const hash = new URLSearchParams({
+                        sst: data.sessionToken,
+                        cid: data.characterId,
+                        pid: data.playerId,
+                        srv: data.serverUrl || DEFAULT_SERVER_URL,
+                        name: data.character?.name || "",
+                    }).toString();
+                    window.location.href = `${MATTERCRAFT_AR_URL}#${hash}`;
                     return;
                 }
 
