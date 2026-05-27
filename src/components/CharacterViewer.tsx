@@ -9,10 +9,21 @@ import "./CharacterViewer.css";
 
 // ─── Helpers ────────────────────────────────────────────────────
 
-/** Route S3 URLs through our proxy to avoid CORS and hide raw URLs from the browser. */
+/** Route S3 URLs through our proxy to avoid CORS and hide raw URLs from the browser.
+ *  Same-origin and gateway-served URLs are returned as-is — the proxy's allowlist
+ *  is scoped to S3/minio hosts, so non-S3 URLs would 403 there anyway. */
 function proxyUrl(url: string | null): string | null {
   if (!url) return null;
-  return `/api/proxy-model?url=${encodeURIComponent(url)}`;
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const u = new URL(url, base);
+    if (u.hostname.endsWith("amazonaws.com") || u.hostname === "minio") {
+      return `/api/proxy-model?url=${encodeURIComponent(url)}`;
+    }
+    return url;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Types ──────────────────────────────────────────────────────
