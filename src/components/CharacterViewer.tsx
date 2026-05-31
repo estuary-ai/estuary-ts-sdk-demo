@@ -55,7 +55,12 @@ function GLBModel({ url, state, isPreview, audioLevel }: GLBModelProps) {
   const isSpeaking = state === "speaking";
   const isListening = state === "listening";
   const isThinking = state === "thinking";
-  const { scene } = useGLTF(url);
+  const { scene, asset } = useGLTF(url);
+  // Tripo-generated GLBs use a different coordinate convention than Meshy and
+  // face +X, which makes the character snap 90° to the right when rendered.
+  // Detect via the glTF asset generator string and correct the facing below
+  // (mirrors lumiere's CreatureModel gallery fix).
+  const isTripo = asset?.generator?.includes("tripo") ?? false;
   const groupRef = useRef<THREE.Group>(null);
   const scaleRef = useRef(1);
   const yOffsetRef = useRef(0);
@@ -97,10 +102,15 @@ function GLBModel({ url, state, isPreview, audioLevel }: GLBModelProps) {
     clone.position.y -= center.y;
     clone.position.z -= center.z;
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    clone.scale.setScalar(2 / maxDim);
+    clone.scale.setScalar(1.8 / maxDim);
+
+    // Correct Tripo's +X facing so the character faces the camera.
+    if (isTripo) {
+      clone.rotation.y = -Math.PI / 2;
+    }
 
     return { model: clone, glowMaterials: glowMats };
-  }, [scene]);
+  }, [scene, isTripo]);
 
   useFrame((frameState, delta) => {
     if (!groupRef.current) return;
@@ -284,15 +294,66 @@ export default function CharacterViewer({
     return () => cancelAnimationFrame(rafId);
   }, [isSpeaking]);
 
-  // Reset camera rotation when entering voice conversation
+  // When entering a voice/response state from idle, gently rotate the camera
+  // back to the saved front-facing framing instead of snapping via
+  // controls.reset(). While idle the camera auto-rotates around the model; an
+  // instant reset the moment the character started responding felt jarring, so
+  // we ease the orbit (azimuth/polar/distance) and target back over ~0.7s.
   useEffect(() => {
     const prev = prevStateRef.current;
     prevStateRef.current = state;
     const wasIdle = prev === "idle" || prev === "happy";
     const isVoiceState = state === "listening" || state === "speaking" || state === "thinking";
-    if (isVoiceState && wasIdle) {
-      controlsRef.current?.reset();
-    }
+    if (!(isVoiceState && wasIdle)) return;
+
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    const camera = controls.object as THREE.PerspectiveCamera;
+    const startTarget = controls.target.clone();
+    const endTarget = controls.target0.clone();
+    const startSph = new THREE.Spherical().setFromVector3(
+      camera.position.clone().sub(startTarget),
+    );
+    const endSph = new THREE.Spherical().setFromVector3(
+      controls.position0.clone().sub(endTarget),
+    );
+
+    // Take the shortest angular path for the azimuth so a long idle
+    // auto-rotation doesn't unwind the "long way" back to front.
+    const TWO_PI = Math.PI * 2;
+    let dTheta = (endSph.theta - startSph.theta) % TWO_PI;
+    if (dTheta > Math.PI) dTheta -= TWO_PI;
+    if (dTheta < -Math.PI) dTheta += TWO_PI;
+
+    const DURATION = 0.7; // seconds
+    const offset = new THREE.Vector3();
+    const sph = new THREE.Spherical();
+    let elapsed = 0;
+    let lastTime: number | null = null;
+    let rafId = 0;
+
+    const animate = (now: number) => {
+      if (lastTime === null) lastTime = now;
+      elapsed += (now - lastTime) / 1000;
+      lastTime = now;
+      const t = Math.min(1, elapsed / DURATION);
+      const e = t * t * (3 - 2 * t); // smoothstep ease-in-out
+
+      sph.radius = THREE.MathUtils.lerp(startSph.radius, endSph.radius, e);
+      sph.phi = THREE.MathUtils.lerp(startSph.phi, endSph.phi, e);
+      sph.theta = startSph.theta + dTheta * e;
+      sph.makeSafe();
+      offset.setFromSpherical(sph);
+
+      controls.target.lerpVectors(startTarget, endTarget, e);
+      camera.position.copy(controls.target).add(offset);
+      controls.update();
+
+      if (t < 1) rafId = requestAnimationFrame(animate);
+    };
+    rafId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafId);
   }, [state]);
 
   const handleDragEnd = useCallback(() => {
@@ -315,7 +376,6 @@ export default function CharacterViewer({
 
   const isListeningState = state === "listening";
   const isThinkingState = state === "thinking";
-  const isVoiceSession = state !== "idle" && state !== "happy";
   const containerClass = [
     "character-viewer",
     isSpeaking && "character-viewer--speaking",
@@ -366,19 +426,19 @@ export default function CharacterViewer({
             minDistance={1.5}
             maxDistance={10}
             autoRotate={(state === "idle" || state === "happy") && !isDragPaused}
-            autoRotateSpeed={1.2}
+            autoRotateSpeed={0.9}
             onEnd={handleDragEnd}
           />
         </Canvas>
       )}
 
-      {/* Mic status pill — visible during voice session */}
-      {isVoiceSession && (
+      {/* Status pill — shown only while speaking. The listening and thinking
+          states (incl. image analysis) are conveyed by the character's
+          breathing + blue-glow animation, without a pill. */}
+      {isSpeaking && (
         <div className="character-viewer__status-pill">
           <span className={`character-viewer__status-dot character-viewer__status-dot--${state}`} />
-          <span className="character-viewer__status-label">
-            {state === "listening" ? "Listening" : state === "thinking" ? "Thinking..." : "Speaking"}
-          </span>
+          <span className="character-viewer__status-label">Speaking</span>
         </div>
       )}
     </div>
