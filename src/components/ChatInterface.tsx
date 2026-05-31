@@ -472,9 +472,9 @@ function ChatInputForm({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={!isConnected}
-                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full text-muted hover:text-foreground hover:bg-foreground/5 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Attach image"
+                disabled={!isConnected || !!pendingImage}
+                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full text-muted hover:text-foreground hover:bg-foreground/5 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted disabled:hover:bg-transparent"
+                title={pendingImage ? "Remove the current image to attach another" : "Attach image"}
                 aria-label="Attach image"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
