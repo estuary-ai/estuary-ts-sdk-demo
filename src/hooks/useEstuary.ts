@@ -9,12 +9,33 @@ import {
   type SttResponse,
 } from "@estuary-ai/sdk";
 
+// Local type definition — published SDK 0.4.0 wires `capabilities` through to
+// the auth payload but doesn't re-export `SessionCapabilities` from its public
+// index (fixed in 0.4.1). Shape matches the SDK type exactly.
+type SessionCapabilities = {
+  version?: string;
+  camera?: boolean;
+  microphone?: boolean;
+  speaker?: boolean;
+};
+
+// Share-demo runs in a regular browser without camera capture UI, so the
+// server should hide camera-requiring tools (e.g. request_camera_image)
+// from the LLM. Microphone and speaker are available for voice mode.
+const DEMO_CAPABILITIES: SessionCapabilities = {
+  version: "1",
+  camera: false,
+  microphone: true,
+  speaker: true,
+};
+
 export interface ChatMessage {
   id: string;
   role: "user" | "bot";
   text: string;
   timestamp: number;
   isFinal: boolean;
+  imageDataUrl?: string;
 }
 
 export interface EstuaryConfig {
@@ -44,7 +65,7 @@ export const DEFAULT_SETTINGS: EstuarySettings = {
   autoInterruptOnSpeech: true,
   suppressMicDuringPlayback: false,
   audioSampleRate: 16000,
-  debug: true,
+  debug: process.env.NODE_ENV !== "production",
 };
 
 export function useEstuary() {
@@ -60,6 +81,7 @@ export function useEstuary() {
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [botAudioLevel, setBotAudioLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
   const lastSttTextRef = useRef<string>("");
   const speakingGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -91,6 +113,7 @@ export function useEstuary() {
         suppressMicDuringPlayback: settings.suppressMicDuringPlayback,
         audioSampleRate: settings.audioSampleRate,
         debug: settings.debug,
+        capabilities: DEMO_CAPABILITIES,
       });
 
       clientRef.current = client;
@@ -115,6 +138,8 @@ export function useEstuary() {
         if (response.isFinal) {
           lastSttTextRef.current = "";
         }
+        // Clear the "Analyzing image" indicator as soon as the bot starts responding
+        setIsProcessingImage(false);
         setMessages((prev) => {
           const existing = prev.findIndex(
             (m) => m.id === response.messageId && m.role === "bot"
@@ -249,6 +274,31 @@ export function useEstuary() {
     clientRef.current.sendText(text);
   }, []);
 
+  /**
+   * Send an image to the bot with optional accompanying text.
+   * `imageBase64` is the raw base64 (no data: prefix); `dataUrl` is used for
+   * local preview rendering inside the user's message bubble.
+   */
+  const sendImage = useCallback(
+    (imageBase64: string, mimeType: string, dataUrl: string, text?: string) => {
+      if (!clientRef.current?.isConnected) return;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `user-${Date.now()}`,
+          role: "user",
+          text: text ?? "",
+          timestamp: Date.now(),
+          isFinal: true,
+          imageDataUrl: dataUrl,
+        },
+      ]);
+      setIsProcessingImage(true);
+      clientRef.current.sendCameraImage(imageBase64, mimeType, undefined, text);
+    },
+    []
+  );
+
   const startVoice = useCallback(async () => {
     if (!clientRef.current?.isConnected) return;
     try {
@@ -298,9 +348,11 @@ export function useEstuary() {
     isBotSpeaking,
     botAudioLevel,
     error,
+    isProcessingImage,
     connect,
     disconnect,
     sendText,
+    sendImage,
     startVoice,
     stopVoice,
     toggleMute,
