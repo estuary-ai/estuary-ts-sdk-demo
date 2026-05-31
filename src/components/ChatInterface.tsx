@@ -18,11 +18,61 @@ type CharacterInfo = {
   sourceImageUrl: string | null;
 };
 import { useEstuary, type EstuaryConfig, type EstuarySettings, DEFAULT_SETTINGS } from "@/hooks/useEstuary";
-import { encryptWithPassphrase } from "@/lib/crypto";
 import type { CharacterState } from "./CharacterAvatar";
 import MemoryPanel from "./MemoryPanel";
 import SettingsDrawer from "./SettingsDrawer";
+import { useTheme } from "./ThemeProvider";
 import dynamic from "next/dynamic";
+
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("read error"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function stripDataUrlPrefix(dataUrl: string): string {
+  const i = dataUrl.indexOf(",");
+  return i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
+}
+
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  const [rotating, setRotating] = useState(false);
+  const isLight = theme === "light";
+
+  const handleClick = () => {
+    setRotating(true);
+    toggleTheme();
+    setTimeout(() => setRotating(false), 350);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className={`w-9 h-9 flex items-center justify-center rounded-full bg-foreground/10 backdrop-blur-sm text-foreground/80 hover:text-foreground hover:bg-foreground/20 transition-colors ${rotating ? "animate-theme-rotate" : ""}`}
+      title={isLight ? "Switch to dark mode" : "Switch to light mode"}
+      aria-label="Toggle theme"
+    >
+      {isLight ? (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </svg>
+      ) : (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      )}
+    </button>
+  );
+}
 const CharacterViewer = dynamic(() => import("./CharacterViewer"), { ssr: false });
 
 // Default characters (axiom/manny/whiskers) ship as bare keys in the `avatar`
@@ -54,7 +104,7 @@ function ConnectionBadge({ state }: { state: ConnectionState }) {
   };
   const c = config[state] ?? config[ConnectionState.Disconnected];
   return (
-    <div className="flex items-center gap-2 text-xs text-white/70">
+    <div className="flex items-center gap-2 text-xs text-foreground/70">
       <div className={`w-2 h-2 rounded-full ${c.color}`} />
       {c.label}
     </div>
@@ -64,10 +114,135 @@ function ConnectionBadge({ state }: { state: ConnectionState }) {
 function TypingIndicator() {
   return (
     <div className="flex items-center gap-1 px-4 py-3">
-      <div className="typing-dot w-2 h-2 rounded-full bg-gray-400" />
-      <div className="typing-dot w-2 h-2 rounded-full bg-gray-400" />
-      <div className="typing-dot w-2 h-2 rounded-full bg-gray-400" />
+      <div className="typing-dot w-2 h-2 rounded-full bg-muted" />
+      <div className="typing-dot w-2 h-2 rounded-full bg-muted" />
+      <div className="typing-dot w-2 h-2 rounded-full bg-muted" />
     </div>
+  );
+}
+
+// Typewriter reveal. Mirrors estuary-frontend/chat-interface.tsx:
+// 66 chars/sec, RAF-driven with elapsed-time pacing so the perceived rate stays
+// constant across 60/120/144Hz displays. Clock pauses while there's nothing to
+// drain so debt doesn't burst out when the next chunk lands. Drift (final text
+// not a prefix of what's been shown — e.g. backend rewrote earlier content or
+// smart-spacing diverged) resets the display so the bubble always converges to
+// the target.
+const CHARS_PER_SEC = 66;
+const CHARS_PER_MS = CHARS_PER_SEC / 1000;
+
+function TypewriterText({
+  text,
+  isFinal,
+  onTick,
+}: {
+  text: string;
+  isFinal: boolean;
+  onTick?: () => void;
+}) {
+  const [displayed, setDisplayed] = useState("");
+  const displayedRef = useRef("");
+  const targetRef = useRef(text);
+  const isFinalRef = useRef(isFinal);
+  const rafIdRef = useRef<number | null>(null);
+  const lastFrameTimeRef = useRef<number | null>(null);
+  const fractionalCharsRef = useRef(0);
+  const onTickRef = useRef(onTick);
+
+  useEffect(() => {
+    onTickRef.current = onTick;
+  }, [onTick]);
+
+  useEffect(() => {
+    targetRef.current = text;
+    isFinalRef.current = isFinal;
+
+    // Drift: if what we've already shown isn't a prefix of the new target,
+    // restart from empty so the bubble eventually converges.
+    if (!text.startsWith(displayedRef.current)) {
+      displayedRef.current = "";
+      setDisplayed("");
+      lastFrameTimeRef.current = null;
+      fractionalCharsRef.current = 0;
+    }
+
+    const tick = (now: number) => {
+      const target = targetRef.current;
+      const current = displayedRef.current;
+      const remaining = target.length - current.length;
+
+      if (remaining > 0) {
+        if (lastFrameTimeRef.current === null) {
+          lastFrameTimeRef.current = now;
+        }
+        const elapsed = now - lastFrameTimeRef.current;
+        fractionalCharsRef.current += elapsed * CHARS_PER_MS;
+
+        const wholeChars = Math.floor(fractionalCharsRef.current);
+        if (wholeChars > 0) {
+          const take = Math.min(wholeChars, remaining);
+          fractionalCharsRef.current -= take;
+          const next = target.slice(0, current.length + take);
+          displayedRef.current = next;
+          setDisplayed(next);
+          onTickRef.current?.();
+        }
+      } else {
+        lastFrameTimeRef.current = null;
+        fractionalCharsRef.current = 0;
+      }
+
+      lastFrameTimeRef.current = now;
+
+      // Stop the loop once we've caught up to a finalized target. For
+      // non-final targets keep ticking — the buffer-empty branch above parks
+      // the clock so we resume at full speed when more text arrives.
+      if (
+        displayedRef.current.length >= targetRef.current.length &&
+        isFinalRef.current
+      ) {
+        rafIdRef.current = null;
+        return;
+      }
+
+      rafIdRef.current = requestAnimationFrame(tick);
+    };
+
+    if (rafIdRef.current === null && displayedRef.current.length < text.length) {
+      lastFrameTimeRef.current = null;
+      fractionalCharsRef.current = 0;
+      rafIdRef.current = requestAnimationFrame(tick);
+    } else if (
+      rafIdRef.current === null &&
+      !isFinal &&
+      displayedRef.current.length === text.length
+    ) {
+      // Streaming idle: keep the loop alive so we tick as soon as the next
+      // chunk extends the target.
+      lastFrameTimeRef.current = null;
+      fractionalCharsRef.current = 0;
+      rafIdRef.current = requestAnimationFrame(tick);
+    }
+  }, [text, isFinal]);
+
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
+  }, []);
+
+  const isTyping = displayed.length < text.length || !isFinal;
+
+  return (
+    <>
+      {displayed}
+      {isTyping && (
+        <span className="inline-block w-1.5 h-4 bg-accent/50 ml-0.5 animate-pulse rounded-sm align-middle" />
+      )}
+    </>
   );
 }
 
@@ -76,38 +251,60 @@ type ChatMsg = {
   role: "user" | "bot";
   text: string;
   isFinal: boolean;
+  imageDataUrl?: string;
 };
 
 function FullChatLog({
   messages,
   messagesEndRef,
+  lastMessageRef,
   isVoiceActive,
   isBotSpeaking,
+  isProcessingImage,
 }: {
   messages: ChatMsg[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  lastMessageRef: React.RefObject<HTMLDivElement | null>;
   isVoiceActive: boolean;
   isBotSpeaking: boolean;
+  isProcessingImage: boolean;
 }) {
   return (
     <div className="space-y-3">
-      {messages.map((msg) => (
+      {messages.map((msg, i) => (
         <div
           key={msg.id}
+          ref={i === messages.length - 1 ? lastMessageRef : undefined}
           className={`animate-fade-in-up flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
         >
           <div
-            className={`${
-              msg.role === "user" ? "max-w-[75%]" : "max-w-[80%]"
-            } rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+            className={`max-w-[85%] rounded-lg text-sm leading-relaxed chat-message ${
               msg.role === "user"
-                ? "bg-[#d0e8f5] text-[#1a1a2e] rounded-br-md"
-                : "bg-white text-[#1a1a2e] rounded-bl-md shadow-sm"
-            } ${!msg.isFinal && msg.role === "bot" ? "opacity-80" : ""}`}
+                ? "bg-accent text-white"
+                : "bg-surface-light text-foreground"
+            } ${!msg.isFinal && msg.role === "bot" ? "opacity-70" : ""} ${msg.imageDataUrl ? "p-1.5" : "p-3"}`}
           >
-            {msg.text}
-            {!msg.isFinal && msg.role === "bot" && (
-              <span className="inline-block w-1.5 h-4 bg-accent/50 ml-0.5 animate-pulse rounded-sm" />
+            {msg.imageDataUrl && (
+              <img
+                src={msg.imageDataUrl}
+                alt="Attached"
+                className="max-w-[240px] max-h-[200px] rounded-xl object-contain block"
+              />
+            )}
+            {msg.text && (
+              <div className={msg.imageDataUrl ? "px-2.5 py-1.5" : ""}>
+                {msg.role === "bot" ? (
+                  <TypewriterText
+                    text={msg.text}
+                    isFinal={msg.isFinal}
+                    onTick={() =>
+                      messagesEndRef.current?.scrollIntoView({ behavior: "instant" })
+                    }
+                  />
+                ) : (
+                  msg.text
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -115,10 +312,11 @@ function FullChatLog({
 
       {isVoiceActive &&
         isBotSpeaking &&
+        !isProcessingImage &&
         !messages.some((m) => m.role === "bot" && !m.isFinal) &&
         messages[messages.length - 1]?.role !== "bot" && (
           <div className="flex justify-start">
-            <div className="bg-white rounded-2xl rounded-bl-md shadow-sm">
+            <div className="bg-surface-light rounded-lg">
               <TypingIndicator />
             </div>
           </div>
@@ -128,6 +326,8 @@ function FullChatLog({
     </div>
   );
 }
+
+type PendingImage = { file: File; previewUrl: string };
 
 function ChatInputForm({
   textInput,
@@ -147,6 +347,12 @@ function ChatInputForm({
   characterName,
   sttClassName,
   wrapperClassName,
+  pendingImage,
+  onPickImage,
+  onRemoveImage,
+  onPasteImage,
+  onDropImage,
+  uploadError,
 }: {
   textInput: string;
   setTextInput: (v: string) => void;
@@ -165,68 +371,158 @@ function ChatInputForm({
   characterName?: string;
   sttClassName?: string;
   wrapperClassName?: string;
+  pendingImage: PendingImage | null;
+  onPickImage: (file: File) => void;
+  onRemoveImage: () => void;
+  onPasteImage: (file: File) => void;
+  onDropImage: (file: File) => void;
+  uploadError: string | null;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const canSend = isConnected && (textInput.trim().length > 0 || pendingImage !== null);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      setIsDragOver(true);
+    }
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget === e.target) setIsDragOver(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith("image/"));
+    if (file) onDropImage(file);
+  };
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData.items);
+    for (const item of items) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          onPasteImage(file);
+          return;
+        }
+      }
+    }
+  };
+
   return (
     <div className={wrapperClassName ?? ""}>
       {isVoiceActive && sttText && (
-        <p className={`text-xs text-white/70 italic truncate mb-2 px-1 ${sttClassName ?? ""}`}>
+        <p className={`text-xs text-foreground/70 italic truncate mb-2 px-1 ${sttClassName ?? ""}`}>
           &ldquo;{sttText}&rdquo;
         </p>
       )}
-      <div className="flex items-center gap-2">
+      {uploadError && (
+        <p className="text-sm text-danger mb-2 px-1">{uploadError}</p>
+      )}
+      <div className="flex items-end gap-2">
         <form onSubmit={handleSendText} className="flex-1 min-w-0">
-          <div className="flex items-center bg-white rounded-full px-2 py-1 shadow-lg">
-            {/* Camera icon */}
-            <button
-              type="button"
-              className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 transition"
-              title="Camera"
-              disabled
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                <circle cx="12" cy="13" r="4" />
-              </svg>
-            </button>
-            <textarea
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={`Talk to ${characterName || "character"}...`}
-              className="bg-transparent border-none focus:ring-0 focus:outline-none resize-none flex-1 min-h-0 max-h-[100px] min-w-0 py-2 text-sm text-gray-900 placeholder:text-gray-400"
-              rows={1}
-              disabled={!isConnected}
-              style={{ boxShadow: "none" }}
-            />
-            {textInput.trim() ? (
-              <button
-                type="submit"
-                disabled={!isConnected}
-                className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-gray-900 text-white hover:bg-gray-700 transition disabled:opacity-30"
-                title="Send"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" x2="11" y1="2" y2="13" />
-                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                </svg>
-              </button>
-            ) : textInput.length > 0 ? (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED_IMAGE_TYPES.join(",")}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onPickImage(file);
+              e.target.value = "";
+            }}
+          />
+          <div
+            className={`bg-surface ${pendingImage ? "rounded-2xl" : "rounded-full"} px-1.5 py-1 shadow-lg border transition ${
+              isDragOver ? "border-accent ring-2 ring-accent/40" : "border-border"
+            }`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {pendingImage && (
+              // Attachment tray: a single thumbnail tile, left-aligned with the
+              // attach button in the input row below it (no extra horizontal
+              // padding) so the composer reads as one cohesive unit. Mirrors the
+              // ChatGPT/Claude image composer; no filename, to avoid an empty gap.
+              <div className="flex pt-1.5 pb-1">
+                <div className="relative shrink-0">
+                  <img
+                    src={pendingImage.previewUrl}
+                    alt={pendingImage.file.name}
+                    className="w-14 h-14 rounded-xl object-cover border border-border"
+                  />
+                  <button
+                    type="button"
+                    onClick={onRemoveImage}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-foreground text-background flex items-center justify-center shadow-md ring-2 ring-surface hover:opacity-80 transition"
+                    title="Remove attachment"
+                    aria-label={`Remove ${pendingImage.file.name}`}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => setTextInput("")}
-                className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-gray-900 text-white hover:bg-gray-700 transition"
-                title="Clear"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!isConnected}
+                className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full text-muted hover:text-foreground hover:bg-foreground/5 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Attach image"
+                aria-label="Attach image"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 6 6 18M6 6l12 12" />
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                 </svg>
               </button>
-            ) : null}
+              <textarea
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                placeholder={pendingImage ? "Add a message (optional)…" : `Talk to ${characterName || "character"}...`}
+                className="bg-transparent border-none focus:ring-0 focus:outline-none resize-none flex-1 min-h-0 max-h-[120px] min-w-0 py-2 text-sm text-foreground placeholder:text-muted placeholder:leading-6 chat-message"
+                rows={1}
+                disabled={!isConnected}
+                style={{ boxShadow: "none" }}
+              />
+              {canSend ? (
+                <button
+                  type="submit"
+                  className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-accent text-white hover:bg-accent-light transition"
+                  title="Send"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="22" x2="11" y1="2" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                </button>
+              ) : textInput.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setTextInput("")}
+                  className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-accent text-white hover:bg-accent-light transition"
+                  title="Clear"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              ) : null}
+            </div>
           </div>
         </form>
 
-        {/* Voice controls — outside the input pill */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        {/* Voice controls — outside the input pill. Bottom-aligned (items-end on
+            the parent row + pb-1 here) so they stay level with the input row when
+            an attachment tray grows the composer upward or the textarea wraps. */}
+        <div className="flex items-center gap-1.5 flex-shrink-0 pb-1">
           {isVoiceActive ? (
             <>
               {(() => {
@@ -237,12 +533,12 @@ function ChatInputForm({
                     type="button"
                     onClick={toggleMute}
                     disabled={isSuppressed}
-                    className={`rounded-full h-11 w-11 p-0 flex items-center justify-center transition-all ${
+                    className={`rounded-full h-10 w-10 p-0 flex items-center justify-center transition-all ${
                       isSuppressed
-                        ? "bg-[#9080a8]/20 text-[#9080a8] cursor-not-allowed opacity-75"
+                        ? "bg-muted/20 text-muted cursor-not-allowed opacity-75"
                         : showMuted
                           ? "bg-warning/20 text-warning"
-                          : "bg-white/15 text-white hover:bg-white/25"
+                          : "bg-foreground/10 text-foreground hover:bg-foreground/20"
                     }`}
                     title={isSuppressed ? "Auto-muted during playback" : isMuted ? "Unmute" : "Mute"}
                   >
@@ -265,7 +561,7 @@ function ChatInputForm({
                 <button
                   type="button"
                   onClick={interruptBot}
-                  className="rounded-full h-11 w-11 p-0 flex items-center justify-center bg-danger/20 text-danger hover:bg-danger/30 transition-all"
+                  className="rounded-full h-10 w-10 p-0 flex items-center justify-center bg-danger/20 text-danger hover:bg-danger/30 transition-all"
                   title="Interrupt"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -276,7 +572,7 @@ function ChatInputForm({
               <button
                 type="button"
                 onClick={stopVoice}
-                className="rounded-full h-11 w-11 p-0 flex items-center justify-center bg-danger/20 text-danger hover:bg-danger/30 transition-all"
+                className="rounded-full h-10 w-10 p-0 flex items-center justify-center bg-danger/20 text-danger hover:bg-danger/30 transition-all"
                 title="End Voice Call"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -290,7 +586,7 @@ function ChatInputForm({
               type="button"
               onClick={startVoice}
               disabled={!isConnected}
-              className="rounded-full h-11 w-11 p-0 flex items-center justify-center bg-gray-900 text-white hover:bg-gray-700 transition disabled:opacity-30 disabled:cursor-not-allowed"
+              className="rounded-full h-10 w-10 p-0 flex items-center justify-center bg-accent text-white hover:bg-accent-light transition disabled:opacity-30 disabled:cursor-not-allowed"
               title="Start Voice Call"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -315,14 +611,14 @@ function CharacterInfoBlock({ characterInfo }: { characterInfo: CharacterInfo | 
           {characterInfo?.name?.charAt(0).toUpperCase() ?? "E"}
         </div>
       )}
-      <h2 className="text-lg font-semibold text-foreground leading-tight">{name}</h2>
+      <h2 className="text-lg font-bold text-foreground leading-tight">{name}</h2>
       {characterInfo?.tagline ? (
-        <p className="text-sm text-foreground leading-relaxed">{characterInfo.tagline}</p>
+        <p className="text-sm text-muted leading-relaxed">{characterInfo.tagline}</p>
       ) : null}
       {characterInfo?.personality ? (
         <div className="w-full text-left mt-1">
-          <p className="text-[10px] font-semibold text-muted uppercase tracking-wider mb-1">Personality</p>
-          <p className="text-xs text-foreground/80 leading-relaxed">{characterInfo.personality}</p>
+          <p className="text-xs font-semibold text-muted uppercase tracking-wider mb-1">Personality</p>
+          <p className="text-sm text-foreground/80 leading-relaxed">{characterInfo.personality}</p>
         </div>
       ) : null}
       <a
@@ -342,9 +638,15 @@ function deriveCharacterState(
   isBotSpeaking: boolean,
   sttText: string,
   hasPendingBotMessage: boolean,
+  isProcessingImage: boolean,
+  awaitingResponse: boolean,
 ): CharacterState {
   if (isBotSpeaking) return "speaking";
-  if (hasPendingBotMessage) return "thinking";
+  // A just-sent message, image analysis, and a pending bot reply all put the
+  // character in the thinking state (faces forward + breathing + blue glow)
+  // while it works. awaitingResponse bridges the gap between send and the
+  // bot's first streamed token so the character faces forward immediately.
+  if (awaitingResponse || isProcessingImage || hasPendingBotMessage) return "thinking";
   if (sttText) return "listening";
   if (isVoiceActive) return "listening";
   return "idle";
@@ -363,9 +665,11 @@ export default function ChatInterface() {
     isBotSpeaking,
     botAudioLevel,
     error,
+    isProcessingImage,
     connect,
     disconnect,
     sendText,
+    sendImage,
     startVoice,
     stopVoice,
     toggleMute,
@@ -375,14 +679,17 @@ export default function ChatInterface() {
 
   const [config, setConfig] = useState<EstuaryConfig | null>(null);
   const [textInput, setTextInput] = useState("");
-  const [showShareModal, setShowShareModal] = useState(false);
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  // Set the instant the user sends a message so the character faces forward
+  // right away, before the bot's first token arrives. Cleared once a real
+  // response signal (pending bot message / speaking / image analysis) takes
+  // over, or by a safety timeout.
+  const [awaitingResponse, setAwaitingResponse] = useState(false);
+  const awaitingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [copiedField, setCopiedField] = useState<"url" | "hash" | null>(null);
-  const [shareHash, setShareHash] = useState("");
-  const [shareUrl, setShareUrl] = useState("");
-  const [isEncrypting, setIsEncrypting] = useState(false);
-  const [shareError, setShareError] = useState<string | null>(null);
-  const [sharePassphrase, setSharePassphrase] = useState("");
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const [rightPanel, setRightPanel] = useState<"chat" | "memory">("chat");
   const [activeSidePanel, setActiveSidePanel] = useState<"character" | "memory" | "settings">("character");
   const [sidePanelMenuOpen, setSidePanelMenuOpen] = useState(false);
@@ -391,7 +698,10 @@ export default function ChatInterface() {
   const [showOverflow, setShowOverflow] = useState(false);
   const [showInfoDrawer, setShowInfoDrawer] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const shareRef = useRef<HTMLDivElement>(null);
+  const lastMessageRef = useRef<HTMLDivElement>(null);
+  const characterFloatRef = useRef<HTMLDivElement>(null);
+  const mainAreaRef = useRef<HTMLDivElement>(null);
+  const newestRoleRef = useRef<"user" | "bot" | null>(null);
   const overflowRef = useRef<HTMLDivElement>(null);
   const infoDrawerRef = useRef<HTMLDivElement>(null);
   const connectAttemptedRef = useRef(false);
@@ -410,6 +720,10 @@ export default function ChatInterface() {
     } catch {
       router.replace("/");
     }
+    // The connect page stashes the URL the user arrived on (share token /
+    // encrypted hash / legacy hash) so we can hand it back via the Share menu.
+    // Absent when the session was configured by hand on the connect form.
+    setShareUrl(sessionStorage.getItem("estuary-share-url"));
   }, [router]);
 
   useEffect(() => {
@@ -476,18 +790,6 @@ export default function ChatInterface() {
     setSuppressMicDuringPlayback(settings.suppressMicDuringPlayback);
   }, [settings.suppressMicDuringPlayback, setSuppressMicDuringPlayback]);
 
-  // Close share modal on click outside
-  useEffect(() => {
-    if (!showShareModal) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (shareRef.current && !shareRef.current.contains(e.target as Node)) {
-        setShowShareModal(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showShareModal]);
-
   // Close overflow menu on click outside
   useEffect(() => {
     if (!showOverflow) return;
@@ -535,15 +837,101 @@ export default function ChatInterface() {
   }, [lastBotMessage]);
 
   const characterState: CharacterState = useMemo(() => {
-    const base = deriveCharacterState(isVoiceActive, isBotSpeaking, sttText, hasPendingBotMessage);
+    const base = deriveCharacterState(isVoiceActive, isBotSpeaking, sttText, hasPendingBotMessage, isProcessingImage, awaitingResponse);
     if (base === "idle" && isHappyResponse) return "happy";
     return base;
-  }, [isVoiceActive, isBotSpeaking, sttText, hasPendingBotMessage, isHappyResponse]);
+  }, [isVoiceActive, isBotSpeaking, sttText, hasPendingBotMessage, isHappyResponse, isProcessingImage, awaitingResponse]);
 
-  // Auto-scroll messages
+  // Characters with only a 2D avatar (no glb/preview model) skip the 3D viewer
+  // and render a centered estuary-frontend-style chat layout instead.
+  const has3DModel = useMemo(() => {
+    if (!characterInfo) return false;
+    if (characterInfo.modelUrl) return true;
+    if (
+      characterInfo.modelPreviewUrl &&
+      (characterInfo.modelStatus === "preview_ready" || characterInfo.modelStatus === "generating")
+    ) {
+      return true;
+    }
+    return false;
+  }, [characterInfo]);
+
+  // Auto-scroll messages + remember whose message is newest (drives the float).
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const list = messages as ChatMsg[];
+    newestRoleRef.current = list.length ? list[list.length - 1].role : null;
   }, [messages]);
+
+  // Gentle vertical float: the 3D character drifts toward the newest message so it
+  // appears to follow the conversation — rising to your message, then settling down
+  // to its own reply once it speaks.
+  //
+  //   • It lines the character's FACE (≈0.4 down its canvas, since the model is framed
+  //     centered) up with the bubble — anchoring the canvas top instead left it sitting
+  //     too low, because the top of the canvas is transparent headroom.
+  //   • A per-turn ROLE BOB makes the direction read clearly every turn regardless of
+  //     scroll position: when your message is newest the character lifts up by
+  //     USER_LIFT; when the bot's reply is newest it has no lift, so it floats back
+  //     down. (The bot's bubble also renders below yours, reinforcing the descent.)
+  //   • It only ever floats *up* from its resting bottom anchor, never below it, and
+  //     never above the top edge of the main area.
+  //
+  // RAF-lerped for a soft, frame-rate-independent glide that also tracks live message
+  // growth, scroll, and resize.
+  useEffect(() => {
+    if (!has3DModel) return;
+    // Where the character's face/visible-center sits in its canvas, as a fraction
+    // from the top (the model is framed centered, so ~0.4 lands around the face /
+    // upper chest). Raise this to lift the character higher relative to the bubble.
+    const FACE_FRAC = 0.4;
+    const USER_LIFT = 24; // extra upward drift while your message is the newest
+    const TOP_PAD = 48;   // keep the face at least this far below the main-area top
+    let rafId = 0;
+    let last = performance.now();
+    let applied = 0; // currently applied translateY in px
+
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+
+      const charEl = characterFloatRef.current;
+      const mainEl = mainAreaRef.current;
+      const msgEl = lastMessageRef.current;
+
+      let desired = 0; // rest position when there's nothing to track
+      if (charEl && mainEl) {
+        const mainRect = mainEl.getBoundingClientRect();
+        const charRect = charEl.getBoundingClientRect();
+        const msgRect = msgEl?.getBoundingClientRect();
+        // Natural (untransformed) geometry by backing out the applied offset.
+        const naturalTop = charRect.top - applied;
+        // The point on the character we line up with the bubble — its face, not the
+        // canvas top (which is transparent headroom, hence the old "too low").
+        const faceNatural = naturalTop + FACE_FRAC * charRect.height;
+        // Up bound: keep the face within TOP_PAD of the main-area top so the head
+        // stays on screen (the transparent canvas top is free to clip off above it).
+        const minTranslate = mainRect.top + TOP_PAD - faceNatural;
+        // Only track a visible message (height 0 => hidden, e.g. memory view).
+        if (msgRect && msgRect.height > 0) {
+          const targetCenter = msgRect.top + msgRect.height / 2;
+          // Line the character's face up with the bubble; negative => float up.
+          const posTranslate = Math.min(0, targetCenter - faceNatural);
+          // Lift up for your turn; settle down for the bot's reply.
+          const roleLift = newestRoleRef.current === "user" ? -USER_LIFT : 0;
+          desired = Math.max(minTranslate, posTranslate + roleLift);
+        }
+        const alpha = 1 - Math.exp(-dt * 4); // ~gentle glide
+        applied += (desired - applied) * alpha;
+        if (Math.abs(applied) < 0.1) applied = 0;
+        charEl.style.transform = applied ? `translateY(${applied.toFixed(2)}px)` : "";
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [has3DModel]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -559,68 +947,113 @@ export default function ChatInterface() {
     setShowSettings(false);
   }, [config, settings, disconnect, connect]);
 
-  const handleSendText = (e: FormEvent) => {
+  const acceptImageFile = useCallback((file: File) => {
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      setUploadError("Unsupported image type. Use PNG, JPEG, WebP, or GIF.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setUploadError("Image is too large (max 20 MB).");
+      return;
+    }
+    setUploadError(null);
+    setPendingImage((prev) => {
+      if (prev) URL.revokeObjectURL(prev.previewUrl);
+      return { file, previewUrl: URL.createObjectURL(file) };
+    });
+  }, []);
+
+  const clearPendingImage = useCallback(() => {
+    setPendingImage((prev) => {
+      if (prev) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+    setUploadError(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl);
+    };
+    // Cleanup on unmount only; pendingImage URL is revoked on replace/clear above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const markAwaitingResponse = useCallback(() => {
+    setAwaitingResponse(true);
+    if (awaitingTimerRef.current) clearTimeout(awaitingTimerRef.current);
+    // Safety: never leave the character stuck "thinking" if nothing arrives.
+    awaitingTimerRef.current = setTimeout(() => setAwaitingResponse(false), 10000);
+  }, []);
+
+  // Hand off from the just-sent bridge to the real response signals (or an error).
+  useEffect(() => {
+    if (awaitingResponse && (hasPendingBotMessage || isBotSpeaking || isProcessingImage || error)) {
+      setAwaitingResponse(false);
+      if (awaitingTimerRef.current) clearTimeout(awaitingTimerRef.current);
+    }
+  }, [awaitingResponse, hasPendingBotMessage, isBotSpeaking, isProcessingImage, error]);
+
+  useEffect(() => () => {
+    if (awaitingTimerRef.current) clearTimeout(awaitingTimerRef.current);
+  }, []);
+
+  const handleSendText = async (e: FormEvent) => {
     e.preventDefault();
-    if (!textInput.trim() || !isConnected) return;
-    sendText(textInput.trim());
+    if (!isConnected) return;
+    const trimmed = textInput.trim();
+    if (pendingImage) {
+      try {
+        const dataUrl = await fileToDataUrl(pendingImage.file);
+        const base64 = stripDataUrlPrefix(dataUrl);
+        sendImage(base64, pendingImage.file.type, dataUrl, trimmed || undefined);
+        markAwaitingResponse();
+        clearPendingImage();
+        setTextInput("");
+      } catch {
+        setUploadError("Couldn't read image file.");
+      }
+      return;
+    }
+    if (!trimmed) return;
+    sendText(trimmed);
+    markAwaitingResponse();
     setTextInput("");
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (textInput.trim() && isConnected) {
+      if (isConnected && (textInput.trim() || pendingImage)) {
         handleSendText(e as unknown as FormEvent);
       }
     }
   };
 
-  const generateShareLink = useCallback(async () => {
-    if (!config || !sharePassphrase.trim()) return;
-    setIsEncrypting(true);
-    setShareError(null);
-    try {
-      const plaintext = JSON.stringify(config);
-      const hash = await encryptWithPassphrase(plaintext, sharePassphrase.trim());
-      setShareHash(hash);
-      setShareUrl(`${window.location.origin}/#${hash}`);
-    } catch {
-      setShareError("Encryption failed. Please try again.");
-    } finally {
-      setIsEncrypting(false);
-    }
-  }, [config, sharePassphrase]);
-
-  const copyToClipboard = useCallback((text: string, field: "url" | "hash") => {
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(() => {
-        setCopiedField(field);
-        setTimeout(() => setCopiedField(null), 2000);
-      }).catch(() => {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-        setCopiedField(field);
-        setTimeout(() => setCopiedField(null), 2000);
-      });
-    } else {
+  const handleCopyShareLink = useCallback(async () => {
+    if (!shareUrl) return;
+    const writeLegacy = () => {
       const textarea = document.createElement("textarea");
-      textarea.value = text;
+      textarea.value = shareUrl;
       textarea.style.position = "fixed";
       textarea.style.opacity = "0";
       document.body.appendChild(textarea);
       textarea.select();
       document.execCommand("copy");
       document.body.removeChild(textarea);
-      setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2000);
+    };
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+      } else {
+        writeLegacy();
+      }
+    } catch {
+      writeLegacy();
     }
-  }, []);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  }, [shareUrl]);
 
   // Loading state
   if (!config) {
@@ -634,18 +1067,25 @@ export default function ChatInterface() {
   return (
     <div className="h-[100dvh] overflow-hidden bg-background lg:flex">
       {/* ── Main area ── */}
-      <div className="relative h-full lg:flex-1 lg:min-w-0 overflow-hidden">
-      {/* ── Floating top-right controls ── */}
+      <div ref={mainAreaRef} className="relative h-full lg:flex-1 lg:min-w-0 overflow-hidden">
+      {/* ── Floating connection badge — shown only below lg, where the side panel (which hosts the badge) is hidden ── */}
+      <div
+        className="absolute left-3 z-40 flex items-center gap-2 lg:hidden"
+        style={{ top: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}
+      >
+        <ConnectionBadge state={connectionState} />
+      </div>
+
       <div
         className="absolute right-3 z-40 flex items-center gap-2"
         style={{ top: "max(0.75rem, env(safe-area-inset-top, 0.75rem))" }}
       >
-        <ConnectionBadge state={connectionState} />
+        <ThemeToggle />
         <div className="relative" ref={overflowRef}>
           <button
             type="button"
             onClick={() => setShowOverflow(!showOverflow)}
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-black/30 backdrop-blur-sm text-white/70 hover:text-white hover:bg-black/50 transition"
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-foreground/10 backdrop-blur-sm text-foreground/80 hover:text-foreground hover:bg-foreground/20 transition"
             title="Menu"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -655,33 +1095,35 @@ export default function ChatInterface() {
             </svg>
           </button>
           {showOverflow && (
-            <div className="absolute right-0 top-11 w-48 rounded-xl border border-white/10 bg-surface/95 backdrop-blur-md shadow-xl z-50 py-1 overflow-hidden">
+            <div className="absolute right-0 top-11 w-48 rounded-xl border border-border bg-surface/95 backdrop-blur-md shadow-xl z-50 py-1 overflow-hidden">
               <button
                 type="button"
                 onClick={() => { setShowInfoDrawer(true); setShowOverflow(false); }}
-                className="lg:hidden w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition"
+                className="lg:hidden w-full flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-surface-light transition"
               >
                 Character info
               </button>
               {IS_DEV && (
                 <>
                   <button onClick={() => { setRightPanel(p => p === "memory" ? "chat" : "memory"); setShowOverflow(false); }}
-                    className="lg:hidden w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
+                    className="lg:hidden w-full flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-surface-light transition">
                     {rightPanel === "memory" ? "Chat" : "Memory Map"}
                   </button>
-                  <button onClick={() => { setShowShareModal(true); setShowOverflow(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
-                    Share
-                  </button>
                   <button onClick={() => { setShowSettings(true); setShowOverflow(false); }}
-                    className="lg:hidden w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
+                    className="lg:hidden w-full flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-surface-light transition">
                     Settings
                   </button>
                 </>
               )}
-              <div className="border-t border-white/10 my-1" />
+              {shareUrl && (
+                <button onClick={handleCopyShareLink}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-surface-light transition">
+                  {shareCopied ? "Link copied!" : "Copy share link"}
+                </button>
+              )}
+              <div className="border-t border-border my-1" />
               <button onClick={() => { handleDisconnect(); setShowOverflow(false); }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-surface-light transition">
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-surface-light transition">
                 Disconnect
               </button>
             </div>
@@ -689,33 +1131,47 @@ export default function ChatInterface() {
         </div>
       </div>
 
-      {/* ── 3D Character — left 1/3, bottom-aligned ── */}
-      <div className="absolute left-0 bottom-16 w-2/5 h-[50%] lg:h-[70%] z-0">
-        <CharacterViewer
-          modelUrl={characterInfo?.modelUrl ?? null}
-          previewModelUrl={characterInfo?.modelPreviewUrl ?? null}
-          modelStatus={characterInfo?.modelStatus ?? null}
-          avatarUrl={characterInfo?.avatar ?? null}
-          state={characterState as "idle" | "listening" | "thinking" | "speaking" | "happy"}
-          audioLevel={botAudioLevel}
-        />
-      </div>
+      {/* ── 3D Character — left 1/3, bottom-aligned. Hidden when character has no 3D model. ── */}
+      {has3DModel && (
+        <div
+          ref={characterFloatRef}
+          className="absolute left-0 bottom-16 w-2/5 h-[50%] lg:h-[70%] z-0"
+          style={{ willChange: "transform" }}
+        >
+          <CharacterViewer
+            modelUrl={characterInfo?.modelUrl ?? null}
+            previewModelUrl={characterInfo?.modelPreviewUrl ?? null}
+            modelStatus={characterInfo?.modelStatus ?? null}
+            avatarUrl={characterInfo?.avatar ?? null}
+            state={characterState as "idle" | "listening" | "thinking" | "speaking" | "happy"}
+            audioLevel={botAudioLevel}
+          />
+        </div>
+      )}
 
       {/* ── Chat messages + Input overlay ── */}
       <div className="relative z-10 h-full flex flex-col pointer-events-none">
-        {/* Scrollable messages — right 2/3 */}
-        <div className="flex-1 overflow-y-auto pt-16 pb-2 px-4 pl-[40%] pointer-events-auto">
+        {/* Scrollable messages — full-width centered when no 3D, right 2/3 otherwise.
+            When a 3D model is present we constrain the scroll container to the right
+            2/3 (instead of full-width) so the bubbles sit close to the character while
+            the left third stays empty — click-drag pointer events there fall through to
+            the character canvas below (z-0), letting OrbitControls rotate the model.
+            (The character is the left 2/5, so this region overlaps its rightmost edge;
+            the model is centered in its canvas, so it stays draggable.) */}
+        <div className={`flex-1 overflow-y-auto pt-16 pb-2 px-4 pointer-events-auto ${has3DModel ? "ml-auto w-2/3" : ""}`}>
           {IS_DEV && rightPanel === "memory" && (
             <div className="lg:hidden">
               <MemoryPanel getClient={getClient} />
             </div>
           )}
-          <div className={IS_DEV && rightPanel === "memory" ? "hidden lg:block" : ""}>
+          <div className={`${IS_DEV && rightPanel === "memory" ? "hidden lg:block" : ""} ${has3DModel ? "" : "max-w-3xl mx-auto"}`}>
             <FullChatLog
               messages={messages as ChatMsg[]}
               messagesEndRef={messagesEndRef}
+              lastMessageRef={lastMessageRef}
               isVoiceActive={isVoiceActive}
               isBotSpeaking={isBotSpeaking}
+              isProcessingImage={isProcessingImage}
             />
           </div>
         </div>
@@ -726,6 +1182,7 @@ export default function ChatInterface() {
           style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 1rem))" }}
         >
           <ChatInputForm
+            wrapperClassName={has3DModel ? "" : "max-w-3xl mx-auto"}
             textInput={textInput}
             setTextInput={setTextInput}
             handleSendText={handleSendText}
@@ -741,6 +1198,12 @@ export default function ChatInterface() {
             stopVoice={stopVoice}
             startVoice={startVoice}
             characterName={characterInfo?.name}
+            pendingImage={pendingImage}
+            onPickImage={acceptImageFile}
+            onRemoveImage={clearPendingImage}
+            onPasteImage={acceptImageFile}
+            onDropImage={acceptImageFile}
+            uploadError={uploadError}
           />
         </div>
       </div>
@@ -748,7 +1211,7 @@ export default function ChatInterface() {
       {/* ── end Main area ── */}
 
       {/* ── Desktop side panel — always visible at lg+ ── */}
-      <div className="hidden lg:flex w-80 shrink-0 h-full flex-col border-l border-border bg-surface">
+      <div className="hidden lg:flex w-80 shrink-0 h-full flex-col border-l border-border bg-card">
         {/* Panel selector */}
         <div className="flex items-center px-4 py-3 border-b border-border shrink-0">
           {IS_DEV ? (
@@ -773,7 +1236,7 @@ export default function ChatInterface() {
                       className={`w-full text-left px-3 py-2 text-sm transition ${
                         activeSidePanel === value
                           ? "text-accent-light bg-accent/10"
-                          : "text-foreground hover:bg-surface hover:text-white"
+                          : "text-foreground hover:bg-surface hover:text-foreground"
                       }`}
                     >
                       {label}
@@ -785,6 +1248,9 @@ export default function ChatInterface() {
           ) : (
             <span className="text-sm font-semibold">Character</span>
           )}
+          <div className="ml-auto shrink-0 pl-2">
+            <ConnectionBadge state={connectionState} />
+          </div>
         </div>
 
         {/* Panel content */}
@@ -811,111 +1277,6 @@ export default function ChatInterface() {
         </div>
       </div>
 
-      {/* ── Share modal — dev only ── */}
-      {IS_DEV && showShareModal && (
-        <div ref={shareRef} className="fixed top-14 left-2 right-2 md:left-auto md:right-4 md:w-96 rounded border border-border bg-surface shadow-xl z-50 animate-fade-in-up">
-          <div className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">Share Session</p>
-              <button
-                onClick={() => setShowShareModal(false)}
-                className="text-muted hover:text-foreground transition"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 6 6 18M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <p className="text-[11px] text-muted leading-relaxed">
-              Your session config is encrypted with AES-256-GCM and a passphrase before sharing.
-            </p>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-medium text-muted uppercase tracking-wider">Passphrase</label>
-              <input
-                type="password"
-                value={sharePassphrase}
-                onChange={(e) => {
-                  setSharePassphrase(e.target.value);
-                  setShareHash("");
-                  setShareUrl("");
-                  setShareError(null);
-                }}
-                className="w-full px-2.5 py-1.5 rounded-lg bg-surface-light border border-border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition"
-                placeholder="Enter a passphrase..."
-              />
-            </div>
-
-            {!shareUrl && (
-              <button
-                onClick={generateShareLink}
-                disabled={isEncrypting || !sharePassphrase.trim()}
-                className="w-full py-2 rounded-lg text-xs font-medium transition bg-accent text-white hover:bg-accent-light disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isEncrypting ? "Encrypting..." : "Generate Encrypted Link"}
-              </button>
-            )}
-            {shareError && <p className="text-[11px] text-danger">{shareError}</p>}
-
-            {shareUrl && (
-              <div className="space-y-1">
-                <label className="text-[10px] font-medium text-muted uppercase tracking-wider">Encrypted URL</label>
-                <div className="flex gap-2 items-center">
-                  <div className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-surface-light border border-border text-[11px] font-mono text-muted truncate select-all" title={shareUrl}>
-                    {shareUrl}
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard(shareUrl, "url")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition shrink-0 ${
-                      copiedField === "url"
-                        ? "bg-success/20 text-success border border-success/30"
-                        : "bg-accent text-white hover:bg-accent-light"
-                    }`}
-                  >
-                    {copiedField === "url" ? "Copied!" : "Copy"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {shareHash && (
-              <div className="space-y-1">
-                <label className="text-[10px] font-medium text-muted uppercase tracking-wider">Encrypted Hash</label>
-                <div className="flex gap-2 items-center">
-                  <div className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-surface-light border border-border text-[11px] font-mono text-muted truncate select-all" title={shareHash}>
-                    {shareHash}
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard(shareHash, "hash")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition shrink-0 ${
-                      copiedField === "hash"
-                        ? "bg-success/20 text-success border border-success/30"
-                        : "bg-accent text-white hover:bg-accent-light"
-                    }`}
-                  >
-                    {copiedField === "hash" ? "Copied!" : "Copy"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {shareUrl && (
-              <div className="flex items-start gap-2 p-2.5 rounded bg-warning/10 border border-warning/20">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-warning shrink-0 mt-0.5">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" x2="12" y1="9" y2="13" />
-                  <line x1="12" x2="12.01" y1="17" y2="17" />
-                </svg>
-                <p className="text-[11px] text-warning leading-relaxed">
-                  Share the passphrase through a different channel than the link.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* ── Error toast ── */}
       {error && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up">
@@ -936,7 +1297,7 @@ export default function ChatInterface() {
           />
           <div
             ref={infoDrawerRef}
-            className="fixed top-0 right-0 h-full w-[min(100%,20rem)] z-50 border-l border-border bg-surface shadow-xl flex flex-col transition-transform duration-200 ease-out translate-x-0"
+            className="fixed top-0 right-0 h-full w-[min(100%,20rem)] z-50 border-l border-border bg-card shadow-xl flex flex-col transition-transform duration-200 ease-out translate-x-0"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
               <span className="text-sm font-medium">Character</span>
