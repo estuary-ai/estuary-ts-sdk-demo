@@ -1,0 +1,42 @@
+#!/bin/sh
+# Pre-push guard: ensure THIS repo's committed pnpm-lock.yaml is in sync with
+# package.json — the exact check Vercel runs via `pnpm install --frozen-lockfile`.
+#
+# This repo deploys to Vercel standalone (NOT from the parent pnpm workspace), so
+# the workspace's gitignored root lockfile is irrelevant here — only this repo's
+# own pnpm-lock.yaml is deployed. Bumping a dependency at the parent workspace
+# root updates the root lockfile, NOT this one, so this file silently goes stale
+# and Vercel fails the deploy with ERR_PNPM_OUTDATED_LOCKFILE.
+#
+# --ignore-workspace forces pnpm to validate this repo standalone (Vercel parity),
+# even when run from inside the parent workspace checkout.
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pre-push: pnpm not on PATH — skipping lockfile sync check." >&2
+  exit 0
+fi
+
+log="${TMPDIR:-/tmp}/estuary-prepush-$$.log"
+echo "pre-push: checking pnpm-lock.yaml is in sync with package.json (Vercel parity)…"
+if pnpm install --frozen-lockfile --lockfile-only --ignore-workspace >"$log" 2>&1; then
+  echo "pre-push: lockfile in sync ✓"
+  rm -f "$log"
+  exit 0
+fi
+
+echo "" >&2
+echo "✗ BLOCKED: pnpm-lock.yaml is OUT OF SYNC with package.json." >&2
+echo "  Vercel will fail this deploy with ERR_PNPM_OUTDATED_LOCKFILE." >&2
+echo "" >&2
+echo "  Fix before pushing — regenerate THIS repo's lockfile standalone:" >&2
+echo "    pnpm install --ignore-workspace" >&2
+echo "    git add package.json pnpm-lock.yaml && git commit" >&2
+echo "" >&2
+echo "  (Updating the dependency at the parent workspace root does NOT update" >&2
+echo "   this lockfile — you must relock here, standalone.)" >&2
+echo "  --- pnpm output ---" >&2
+cat "$log" >&2
+rm -f "$log"
+echo "" >&2
+echo "  To bypass intentionally: git push --no-verify" >&2
+exit 1
