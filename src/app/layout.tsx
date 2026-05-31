@@ -1,16 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains",
-  subsets: ["latin"],
-});
+// Fonts are self-hosted in public/fonts/ (matching estuary-frontend). They're
+// declared via @font-face in globals.css. We avoid next/font/google here
+// because this environment can't reach fonts.googleapis.com at build time —
+// next/font silently falls back to Arial when the download fails.
 
 export const metadata: Metadata = {
   title: "Estuary Share",
@@ -24,15 +20,32 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+const noFlashScript = `
+(function () {
+  try {
+    var t = localStorage.getItem('estuary-share-theme');
+    if (t === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.documentElement.style.colorScheme = 'dark';
+    } else {
+      document.documentElement.style.colorScheme = 'light';
+    }
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
-        {children}
+    <html lang="en" suppressHydrationWarning>
+      <body className="antialiased font-sans">
+        <Script id="theme-no-flash" strategy="beforeInteractive">
+          {noFlashScript}
+        </Script>
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

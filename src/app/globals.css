@@ -1,29 +1,114 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Self-hosted fonts (matches estuary-frontend) — avoids next/font/google's
+ * silent Arial fallback when the build can't reach fonts.googleapis.com. */
+@font-face {
+  font-family: 'Fredoka';
+  src: url('/fonts/Fredoka-VariableFont_wdth,wght.ttf') format('truetype');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito-VariableFont_wght.ttf') format('truetype');
+  font-weight: 200 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito-Italic-VariableFont_wght.ttf') format('truetype');
+  font-weight: 200 1000;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  --background: #fdf8ed;
+  --foreground: #2f3737;
+  --muted: #5f6d6d;
+  --accent: #2c6862;
+  --accent-light: #3a847d;
+  --surface: #ffffff;
+  --surface-light: #f5f0e0;
+  --card: #e3dece;
+  --border: #d6d1c2;
+  --success: #4a9b62;
+  --danger: #c14040;
+  --warning: #b88830;
+}
+
+.dark {
+  --background: #090c16;
+  --foreground: #d0d8e4;
+  --muted: #4a5a70;
+  --accent: #5aadcf;
+  --accent-light: #74c0dc;
+  --surface: #101522;
+  --surface-light: #1a2035;
+  --card: #101522;
+  --border: #283048;
+  --success: #5cb87a;
+  --danger: #cf5050;
+  --warning: #d4a04a;
+}
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
+  --color-surface: var(--surface);
+  --color-surface-light: var(--surface-light);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+}
+
+/* Match estuary-frontend: Nunito for body, Fredoka for headings, system mono.
+ * Use @theme inline so values are baked into utilities at build time. */
 @theme inline {
-  --color-background: #090c16;
-  --color-foreground: #d0d8e4;
-  --color-muted: #4a5a70;
-  --color-accent: #5aadcf;
-  --color-accent-light: #74c0dc;
-  --color-surface: #101522;
-  --color-surface-light: #1a2035;
-  --color-border: #283048;
-  --color-success: #5cb87a;
-  --color-danger: #cf5050;
-  --color-warning: #d4a04a;
-  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-jetbrains), "Fira Code", monospace;
+  --font-sans: 'Nunito', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  --font-title: 'Fredoka', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  --font-mono: "Consolas", "Monaco", "Courier New", monospace;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-surface-light) transparent;
+  scrollbar-color: var(--surface-light) transparent;
 }
 
 body {
-  background: var(--color-background);
-  color: var(--color-foreground);
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+/* Headings use Fredoka to match estuary-frontend */
+h1, h2, h3, h4, h5, h6, .font-title {
+  font-family: var(--font-title);
+}
+
+/* Mobile-specific text size adjustments — mirror estuary-frontend */
+@media (max-width: 768px) {
+  /* Prevent iOS from zooming on input focus */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+
+  /* Slightly smaller chat bubble density on mobile */
+  .chat-message {
+    font-size: 15px;
+    line-height: 1.5;
+  }
 }
 
 @keyframes pulse-ring {
@@ -56,6 +141,16 @@ body {
 @keyframes spin-slow {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes theme-rotate {
+  0% { transform: rotate(0deg); }
+  60% { transform: rotate(30deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.animate-theme-rotate {
+  animation: theme-rotate 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .animate-pulse-ring {
