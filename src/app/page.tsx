@@ -247,7 +247,7 @@ export default function ConnectPage() {
           <div className="text-center mb-8">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/estuary-logo.png" alt="Estuary" className="w-16 h-16 rounded mb-4 mx-auto" />
-            <h1 className="text-2xl font-bold tracking-tight">
+            <h1 className="text-2xl font-medium tracking-tight">
               {encryptedHash && hashPayloadType === "passphrase"
                 ? "Encrypted Session Link"
                 : "Estuary"}

@@ -611,7 +611,7 @@ function CharacterInfoBlock({ characterInfo }: { characterInfo: CharacterInfo | 
           {characterInfo?.name?.charAt(0).toUpperCase() ?? "E"}
         </div>
       )}
-      <h2 className="text-lg font-bold text-foreground leading-tight">{name}</h2>
+      <h2 className="text-lg font-medium text-foreground leading-tight">{name}</h2>
       {characterInfo?.tagline ? (
         <p className="text-sm text-muted leading-relaxed">{characterInfo.tagline}</p>
       ) : null}
