@@ -121,6 +121,12 @@ export default function ConnectPage() {
 
   // Restore saved config or detect shared link type
   useEffect(() => {
+    // Capture the URL that brought the user here so the chat page can offer
+    // it back via the Share menu. Cleared up front in case the previous tab
+    // session left a stale value behind.
+    const arrivalUrl = window.location.href;
+    sessionStorage.removeItem("estuary-share-url");
+
     // Check for share token FIRST (takes priority over hash links)
     const params = new URLSearchParams(window.location.search);
     const shareToken = params.get("share");
@@ -135,6 +141,7 @@ export default function ConnectPage() {
       exchangeShareToken(shareToken)
         .then(({ config: creds, character }) => {
           sessionStorage.setItem("estuary-config", JSON.stringify(creds));
+          sessionStorage.setItem("estuary-share-url", arrivalUrl);
           if (character) {
             sessionStorage.setItem("estuary-character", JSON.stringify(character));
           }
@@ -161,6 +168,7 @@ export default function ConnectPage() {
       // v1: needs passphrase
       setEncryptedHash(hash);
       setHashPayloadType(type);
+      sessionStorage.setItem("estuary-share-url", arrivalUrl);
       return;
     }
     if (type === "legacy") {
@@ -168,6 +176,7 @@ export default function ConnectPage() {
       if (shared) {
         setConfig(shared);
         setIsFromLink(true);
+        sessionStorage.setItem("estuary-share-url", arrivalUrl);
         return;
       }
     }
