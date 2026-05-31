@@ -160,14 +160,14 @@ export default function MemoryPanel({ getClient }: MemoryPanelProps) {
       {/* Header */}
       <div className="flex-shrink-0 px-4 py-3 border-b border-border space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold flex items-center gap-2">
+          <p className="text-sm font-semibold flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
               <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
               <path d="M2 12h20" />
             </svg>
             Memory Map
-          </h2>
+          </p>
           <button
             onClick={fetchMemories}
             disabled={loading}
