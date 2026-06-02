@@ -1121,7 +1121,11 @@ export default function ChatInterface() {
                   {shareCopied ? "Link copied!" : "Copy share link"}
                 </button>
               )}
-              <div className="border-t border-border my-1" />
+              {/* Divider above Disconnect — only when an item is actually visible
+                  above it. The info/dev items are lg:hidden, so on desktop the share
+                  link is the only thing that keeps this from orphaning into a stray
+                  rule above Disconnect (which reads as a "cut off" Copy link). */}
+              <div className={`border-t border-border my-1 ${shareUrl ? "" : "lg:hidden"}`} />
               <button onClick={() => { handleDisconnect(); setShowOverflow(false); }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-sm text-foreground hover:bg-surface-light transition">
                 Disconnect
