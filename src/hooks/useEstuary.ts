@@ -98,10 +98,18 @@ export function useEstuary() {
   }, [cleanup]);
 
   const connect = useCallback(
-    async (config: EstuaryConfig, settings: EstuarySettings = DEFAULT_SETTINGS) => {
+    async (
+      config: EstuaryConfig,
+      settings: EstuarySettings = DEFAULT_SETTINGS,
+      opts?: { preserveMessages?: boolean }
+    ) => {
       cleanup();
       setError(null);
-      setMessages([]);
+      // Reconnects resume the same server-side conversation, so keep the
+      // transcript on screen unless this is a fresh connect.
+      if (!opts?.preserveMessages) {
+        setMessages([]);
+      }
 
       const client = new EstuaryClient({
         ...config,
@@ -131,6 +139,12 @@ export function useEstuary() {
         setIsVoiceActive(false);
         setIsMuted(false);
         setIsBotSpeaking(false);
+      });
+
+      client.on("sessionTimeout", (data) => {
+        setError(
+          `Session ended after ${data.idleSeconds}s of inactivity — use Reconnect to resume`
+        );
       });
 
       client.on("botResponse", (response: BotResponse) => {
@@ -337,6 +351,8 @@ export function useEstuary() {
 
   const getClient = useCallback(() => clientRef.current, []);
 
+  const clearError = useCallback(() => setError(null), []);
+
   return {
     getClient,
     connectionState,
@@ -348,6 +364,7 @@ export function useEstuary() {
     isBotSpeaking,
     botAudioLevel,
     error,
+    clearError,
     isProcessingImage,
     connect,
     disconnect,

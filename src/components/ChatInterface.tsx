@@ -665,6 +665,7 @@ export default function ChatInterface() {
     isBotSpeaking,
     botAudioLevel,
     error,
+    clearError,
     isProcessingImage,
     connect,
     disconnect,
@@ -942,7 +943,7 @@ export default function ChatInterface() {
     if (!config) return;
     connectAttemptedRef.current = false;
     disconnect();
-    connect(config, settings).catch(() => {});
+    connect(config, settings, { preserveMessages: true }).catch(() => {});
     connectAttemptedRef.current = true;
     setShowSettings(false);
   }, [config, settings, disconnect, connect]);
@@ -1284,8 +1285,27 @@ export default function ChatInterface() {
       {/* ── Error toast ── */}
       {error && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 animate-fade-in-up">
-          <div className="rounded-xl bg-danger/90 backdrop-blur-sm px-4 py-2 text-sm text-white shadow-lg">
-            {error}
+          <div className="flex items-center gap-3 rounded-xl bg-danger/90 backdrop-blur-sm px-4 py-2 text-sm text-white shadow-lg">
+            <span>{error}</span>
+            {!isConnected && (
+              <button
+                type="button"
+                onClick={handleReconnect}
+                className="shrink-0 rounded-lg bg-white/20 px-3 py-1 font-medium hover:bg-white/30 transition"
+              >
+                Reconnect
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={clearError}
+              className="shrink-0 p-1 rounded-lg text-white/70 hover:text-white hover:bg-white/20 transition"
+              aria-label="Dismiss"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         </div>
       )}
