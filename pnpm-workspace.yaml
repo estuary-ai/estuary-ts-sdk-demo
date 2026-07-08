@@ -1,0 +1,6 @@
+# Standalone workspace root (Vercel parity — this repo does not deploy from
+# the parent monorepo workspace).
+# @estuary-ai/sdk releases are our own package — exempt from the
+# minimum-release-age supply-chain guard so fresh publishes install same-day.
+minimumReleaseAgeExclude:
+  - '@estuary-ai/sdk@0.6.0'
