@@ -8,5 +8,9 @@ allowBuilds:
 # the parent monorepo workspace).
 # @estuary-ai/sdk releases are our own package — exempt from the
 # minimum-release-age supply-chain guard so fresh publishes install same-day.
+# Bare package name (not name@version) so every future release stays exempt
+# without editing this list on each publish.
+# NOTE: pnpm invoked with --ignore-workspace skips this file entirely,
+# INCLUDING these policy exclusions — never use that flag in this repo.
 minimumReleaseAgeExclude:
-  - '@estuary-ai/sdk@0.6.0'
+  - '@estuary-ai/sdk'
