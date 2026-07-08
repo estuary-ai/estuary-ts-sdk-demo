@@ -1,3 +1,9 @@
+# Build-script approvals for standalone installs (same packages the parent
+# monorepo approves in its allowBuilds).
+allowBuilds:
+  '@tsparticles/engine': true
+  sharp: true
+  unrs-resolver: true
 # Standalone workspace root (Vercel parity — this repo does not deploy from
 # the parent monorepo workspace).
 # @estuary-ai/sdk releases are our own package — exempt from the
