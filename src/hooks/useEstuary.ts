@@ -84,6 +84,10 @@ export function useEstuary() {
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const lastSttTextRef = useRef<string>("");
   const speakingGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Auto-mute illusion: set when the server releases the call's voice
+  // resources after mic inactivity (voice_timeout). The call UI stays open
+  // with the mic shown as muted; unmuting starts a fresh voice session.
+  const voiceSuspendedRef = useRef(false);
 
   const cleanup = useCallback(() => {
     if (clientRef.current) {
@@ -139,12 +143,25 @@ export function useEstuary() {
         setIsVoiceActive(false);
         setIsMuted(false);
         setIsBotSpeaking(false);
+        voiceSuspendedRef.current = false;
       });
 
       client.on("sessionTimeout", (data) => {
         setError(
           `Session ended after ${data.idleSeconds}s of inactivity — use Reconnect to resume`
         );
+      });
+
+      client.on("voiceTimeout", () => {
+        // The server released the call's voice resources after mic
+        // inactivity (LiveKit room already deleted — billing stopped). The
+        // SDK has released the mic. Present it as an auto-muted mic: the
+        // call UI stays open, the mic shows muted, and unmuting (toggleMute)
+        // transparently starts a fresh voice session.
+        voiceSuspendedRef.current = true;
+        setIsMuted(true);
+        setIsBotSpeaking(false);
+        setSttText("");
       });
 
       client.on("botResponse", (response: BotResponse) => {
@@ -266,6 +283,7 @@ export function useEstuary() {
 
   const disconnect = useCallback(() => {
     cleanup();
+    voiceSuspendedRef.current = false;
     setConnectionState(ConnectionState.Disconnected);
     setSession(null);
     setIsVoiceActive(false);
@@ -324,6 +342,7 @@ export function useEstuary() {
   }, []);
 
   const stopVoice = useCallback(async () => {
+    voiceSuspendedRef.current = false;
     await clientRef.current?.stopVoice();
     setIsVoiceActive(false);
     setIsMuted(false);
@@ -331,10 +350,25 @@ export function useEstuary() {
     setSttText("");
   }, []);
 
-  const toggleMute = useCallback(() => {
-    if (!clientRef.current?.isVoiceActive) return;
-    clientRef.current.toggleMute();
-    setIsMuted(clientRef.current.isMuted);
+  const toggleMute = useCallback(async () => {
+    const client = clientRef.current;
+    if (!client) return;
+    // Unmute after a server voice-idle release (auto-mute illusion): the
+    // voice session is gone — start a fresh one instead of toggling a flag.
+    if (voiceSuspendedRef.current) {
+      voiceSuspendedRef.current = false;
+      try {
+        await client.startVoice();
+        setIsMuted(false);
+      } catch (err) {
+        voiceSuspendedRef.current = true;
+        setError(err instanceof Error ? err.message : "Voice failed");
+      }
+      return;
+    }
+    if (!client.isVoiceActive) return;
+    client.toggleMute();
+    setIsMuted(client.isMuted);
   }, []);
 
   const interruptBot = useCallback(() => {
