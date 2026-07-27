@@ -252,6 +252,7 @@ type ChatMsg = {
   text: string;
   isFinal: boolean;
   imageDataUrl?: string;
+  action?: { name: string; params: Record<string, string> };
 };
 
 function FullChatLog({
@@ -271,7 +272,29 @@ function FullChatLog({
 }) {
   return (
     <div className="space-y-3">
-      {messages.map((msg, i) => (
+      {messages.map((msg, i) => {
+        // Action indicator pill (character performed an in-world action)
+        if (msg.action) {
+          const argsText = Object.entries(msg.action.params)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(", ");
+          return (
+            <div
+              key={msg.id}
+              ref={i === messages.length - 1 ? lastMessageRef : undefined}
+              className="animate-fade-in-up flex justify-start"
+            >
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs text-accent">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+                <span className="font-medium">{msg.action.name}</span>
+                {argsText && <span className="opacity-70">{argsText}</span>}
+              </div>
+            </div>
+          );
+        }
+        return (
         <div
           key={msg.id}
           ref={i === messages.length - 1 ? lastMessageRef : undefined}
@@ -308,7 +331,8 @@ function FullChatLog({
             )}
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {isVoiceActive &&
         isBotSpeaking &&

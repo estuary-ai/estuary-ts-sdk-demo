@@ -36,6 +36,9 @@ export interface ChatMessage {
   timestamp: number;
   isFinal: boolean;
   imageDataUrl?: string;
+  /** Present on action indicator rows: the character performed an in-world
+   *  action (client_action event). Session-local — not part of server history. */
+  action?: { name: string; params: Record<string, string> };
 }
 
 export interface EstuaryConfig {
@@ -205,6 +208,22 @@ export function useEstuary() {
             },
           ];
         });
+      });
+
+      client.on("characterAction", (action) => {
+        // Fire-on-arrival (client_action arrives before the reply text), so the
+        // pill lands in the transcript right where the action happened.
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `action-${action.messageId}-${action.name}-${Date.now()}`,
+            role: "bot",
+            text: "",
+            timestamp: Date.now(),
+            isFinal: true,
+            action: { name: action.name, params: action.params },
+          },
+        ]);
       });
 
       client.on("sttResponse", (response: SttResponse) => {
