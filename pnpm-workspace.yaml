@@ -1,11 +1,16 @@
-# Build-script approvals for standalone installs (same packages the parent
-# monorepo approves in its allowBuilds).
+# Not a workspace. pnpm 10+ keeps per-project SETTINGS in this file, so a
+# single-package repo needs one too. This repo installs and deploys standalone
+# (Vercel). The parent estuary-product pnpm workspace no longer exists — every
+# repo here now installs the same way locally and on Vercel.
+
+# Dependencies allowed to run install scripts. Without real true/false values
+# here, pnpm's pre-run dependency check aborts every `pnpm dev` / `pnpm build`
+# with ERR_PNPM_IGNORED_BUILDS before the script ever executes.
 allowBuilds:
   '@tsparticles/engine': true
   sharp: true
   unrs-resolver: true
-# Standalone workspace root (Vercel parity — this repo does not deploy from
-# the parent monorepo workspace).
+
 # @estuary-ai/sdk releases are our own package — exempt from the
 # minimum-release-age supply-chain guard so fresh publishes install same-day.
 # Bare package name (not name@version) so every future release stays exempt

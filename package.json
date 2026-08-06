@@ -1,6 +1,7 @@
 {
   "name": "estuary-ts-sdk-demo",
   "version": "0.1.0",
+  "packageManager": "pnpm@11.20.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
