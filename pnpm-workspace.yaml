@@ -7,7 +7,6 @@
 # here, pnpm's pre-run dependency check aborts every `pnpm dev` / `pnpm build`
 # with ERR_PNPM_IGNORED_BUILDS before the script ever executes.
 allowBuilds:
-  '@tsparticles/engine': true
   sharp: true
   unrs-resolver: true
 

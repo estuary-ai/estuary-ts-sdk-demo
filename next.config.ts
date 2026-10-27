@@ -3,6 +3,9 @@ import path from "node:path";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@estuary-ai/sdk"],
+  // Stop `next dev` (16.4+) from writing an AGENTS.md into the repo root on every
+  // run. Agent guidance for this repo lives in CLAUDE.md.
+  agentRules: false,
   // Pin the Turbopack root to this repo. Without this, Turbopack infers the
   // parent monorepo (outermost pnpm-lock.yaml) as the project root, and a
   // module graph can span both the monorepo's .pnpm store and this repo's
