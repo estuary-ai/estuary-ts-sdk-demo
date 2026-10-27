@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { EstuaryClient, MemoryData, CoreFact } from "@estuary-ai/sdk";
+import type { EstuaryClient, MemoryData, MemorySearchResult, CoreFact } from "@estuary-ai/sdk";
 
 type MemoryType = string;
 
@@ -50,7 +50,7 @@ export default function MemoryPanel({ getClient }: MemoryPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<{ memory: MemoryData; score: number }[] | null>(null);
+  const [searchResults, setSearchResults] = useState<MemorySearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [activeFilter, setActiveFilter] = useState<MemoryType | "all">("all");
   const [tab, setTab] = useState<"memories" | "facts">("memories");
@@ -118,7 +118,7 @@ export default function MemoryPanel({ getClient }: MemoryPanelProps) {
     ? memories
     : memories.filter((m) => m.memoryType === activeFilter);
 
-  const renderMemoryCard = (mem: MemoryData, score?: number) => (
+  const renderMemoryCard = (mem: Pick<MemoryData, "id" | "content"> & Partial<MemoryData>, score?: number) => (
     <div
       key={mem.id}
       className="rounded-lg border border-border bg-surface p-3 space-y-2 animate-fade-in-up"
@@ -287,7 +287,14 @@ export default function MemoryPanel({ getClient }: MemoryPanelProps) {
             {searchResults.length === 0 && (
               <p className="text-sm text-muted text-center py-8">No matching memories found</p>
             )}
-            {searchResults.map((r) => renderMemoryCard(r.memory, r.score))}
+            {/* A search hit carries only id, text and similarity; show the full
+                card when that memory is already loaded. */}
+            {searchResults.map((r) =>
+              renderMemoryCard(
+                memories.find((m) => m.id === r.memoryId) ?? { id: r.memoryId, content: r.content },
+                r.similarity,
+              ),
+            )}
           </div>
         )}
 

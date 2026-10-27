@@ -167,8 +167,8 @@ importers:
   .:
     dependencies:
       '@estuary-ai/sdk':
-        specifier: ^0.7.0
-        version: 0.7.0(livekit-client@2.23.0(@types/dom-mediacapture-record@1.0.22))
+        specifier: ^0.10.0
+        version: 0.10.0(livekit-client@2.23.0(@types/dom-mediacapture-record@1.0.22))
       '@react-three/drei':
         specifier: ^10.7.9
         version: 10.7.9(@react-three/fiber@9.8.2(@types/react@19.2.14)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.183.2))(@types/react@19.2.14)(@types/three@0.183.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.183.2)
@@ -359,8 +359,8 @@ packages:
     resolution: {integrity: sha512-IkO+/KEUvwbVpiURZg+P7zF74z5Jxe0UgJxVni+RtoHQ6IZieXaO02kmadomap/q+l6bc/jdPGGqTjhuZnuz1Q==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
 
-  '@estuary-ai/sdk@0.7.0':
-    resolution: {integrity: sha512-aPpMTbKelffhDbw2XOgCWL4ofeOqfOHpBiu74hh3zI7AHWaT96pdKv3R5KaqXLQVavswSKj/tRgLvWglcNitTw==}
+  '@estuary-ai/sdk@0.10.0':
+    resolution: {integrity: sha512-iXf96WJ5jpP+CnmPUjGV6m3nujvIut5v0sbk0mnk7cM2gfU4BYhBNfQ0BRXmw98jX+NxZJPp3MPSekI49c2e3A==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       livekit-client: ^2.0.0
@@ -2689,7 +2689,7 @@ snapshots:
       '@eslint/core': 1.2.1
       levn: 0.4.1
 
-  '@estuary-ai/sdk@0.7.0(livekit-client@2.23.0(@types/dom-mediacapture-record@1.0.22))':
+  '@estuary-ai/sdk@0.10.0(livekit-client@2.23.0(@types/dom-mediacapture-record@1.0.22))':
     optionalDependencies:
       livekit-client: 2.23.0(@types/dom-mediacapture-record@1.0.22)
 

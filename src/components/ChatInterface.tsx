@@ -691,6 +691,7 @@ export default function ChatInterface() {
     error,
     clearError,
     isProcessingImage,
+    characterAction,
     connect,
     disconnect,
     sendText,
@@ -1174,6 +1175,7 @@ export default function ChatInterface() {
             avatarUrl={characterInfo?.avatar ?? null}
             state={characterState as "idle" | "listening" | "thinking" | "speaking" | "happy"}
             audioLevel={botAudioLevel}
+            gesture={characterAction}
           />
         </div>
       )}

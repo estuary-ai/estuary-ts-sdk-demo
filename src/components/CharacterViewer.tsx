@@ -1,10 +1,13 @@
 "use client";
 
-import { useRef, useMemo, useState, useCallback, useEffect, Suspense } from "react";
+import { useRef, useMemo, useState, useCallback, useEffect, useEffectEvent, Suspense } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+import { clone as cloneSkinnedScene } from "three/examples/jsm/utils/SkeletonUtils.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { clipPlayback, resolveClip, TIMED_CLIP_SECONDS, type ModelGesture } from "@/lib/clipActions";
 import "./CharacterViewer.css";
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -40,6 +43,8 @@ interface CharacterViewerProps {
   progress?: number;
   /** Bot audio level 0-1 for reactive speaking animation */
   audioLevel?: number;
+  /** A clip the character chose (client_action), played when the model is rigged */
+  gesture?: ModelGesture | null;
 }
 
 // ─── 3D Model Inner Component ───────────────────────────────────
@@ -49,18 +54,33 @@ interface GLBModelProps {
   state: ViewerState;
   isPreview: boolean;
   audioLevel: number;
+  gesture: ModelGesture | null;
+  /** Called with the model's URL when it carries animation clips (a rigged model). */
+  onRigged: (url: string) => void;
 }
 
-function GLBModel({ url, state, isPreview, audioLevel }: GLBModelProps) {
+const GESTURE_FADE_IN = 0.25;
+const GESTURE_FADE_OUT = 0.4;
+
+/** The resting loop of a rigged model. */
+function idleClip(animations: THREE.AnimationClip[]): THREE.AnimationClip {
+  return resolveClip("idle", animations)
+    ?? animations.find((animation) => /idle/i.test(animation.name))
+    ?? animations[0];
+}
+
+function GLBModel({ url, state, isPreview, audioLevel, gesture, onRigged }: GLBModelProps) {
   const isSpeaking = state === "speaking";
   const isListening = state === "listening";
   const isThinking = state === "thinking";
-  const { scene, asset } = useGLTF(url);
+  const { scene, asset, animations } = useGLTF(url);
   // Tripo-generated GLBs use a different coordinate convention than Meshy and
   // face +X, which makes the character snap 90° to the right when rendered.
   // Detect via the glTF asset generator string and correct the facing below
-  // (mirrors lumiere's CreatureModel gallery fix).
-  const isTripo = asset?.generator?.includes("tripo") ?? false;
+  // (mirrors lumiere's CreatureModel gallery fix). Unrigged Tripo meshes say
+  // 'https://tripo3d.ai'; the gateway's rigged ones say 'Tripo'.
+  const isTripo = /tripo/i.test(asset?.generator ?? "");
+  const isRigged = animations.length > 0;
   const groupRef = useRef<THREE.Group>(null);
   const scaleRef = useRef(1);
   const yOffsetRef = useRef(0);
@@ -68,8 +88,11 @@ function GLBModel({ url, state, isPreview, audioLevel }: GLBModelProps) {
   const speakingGlowColor = useMemo(() => new THREE.Color("#00f0ff"), []);
 
   // Clone scene, isolate materials, and extract glow materials
-  const { model, glowMaterials } = useMemo(() => {
-    const clone = scene.clone(true);
+  const { model, animationRoot, glowMaterials } = useMemo(() => {
+    // SkeletonUtils rebinds each skinned mesh to the clone's own bones.
+    // Object3D.clone leaves it bound to the cached scene's, so clips would move
+    // bones the mesh never follows and it would stay in its T-pose.
+    const clone = cloneSkinnedScene(scene);
     const glowMats: THREE.MeshStandardMaterial[] = [];
 
     clone.traverse((child) => {
@@ -92,27 +115,110 @@ function GLBModel({ url, state, isPreview, audioLevel }: GLBModelProps) {
       }
     });
 
-    // Center and normalize to fit a ~2-unit extent
-    const box = new THREE.Box3().setFromObject(clone);
+    // Measure a rigged model in its idle pose. Its bind pose is a T-pose, whose
+    // outstretched arms would set the extent and shrink the character.
+    let poser: THREE.AnimationMixer | null = null;
+    if (isRigged) {
+      poser = new THREE.AnimationMixer(clone);
+      poser.clipAction(idleClip(animations)).play();
+      poser.update(0);
+    }
+    clone.updateMatrixWorld(true);
+    // `precise` reads skinned vertices in their posed positions; the cheap
+    // bounding-box path would still see the T-pose.
+    const box = new THREE.Box3().setFromObject(clone, isRigged);
+    if (poser) {
+      poser.stopAllAction();
+      poser.uncacheRoot(clone);
+    }
+
+    // Center and normalize to fit a ~2-unit extent. Nesting keeps the scale and
+    // the facing turn about the model's center.
     const center = new THREE.Vector3();
     const size = new THREE.Vector3();
     box.getCenter(center);
     box.getSize(size);
-    clone.position.x -= center.x;
-    clone.position.y -= center.y;
-    clone.position.z -= center.z;
+    const centered = new THREE.Group();
+    centered.position.copy(center).multiplyScalar(-1);
+    centered.add(clone);
+    const normalized = new THREE.Group();
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    clone.scale.setScalar(1.8 / maxDim);
+    normalized.scale.setScalar(1.8 / maxDim);
+    normalized.add(centered);
 
     // Correct Tripo's +X facing so the character faces the camera.
     if (isTripo) {
-      clone.rotation.y = -Math.PI / 2;
+      normalized.rotation.y = -Math.PI / 2;
     }
 
-    return { model: clone, glowMaterials: glowMats };
-  }, [scene, isTripo]);
+    return { model: normalized, animationRoot: clone, glowMaterials: glowMats };
+  }, [scene, animations, isRigged, isTripo]);
+
+  const mixer = useMemo(
+    () => (isRigged ? new THREE.AnimationMixer(animationRoot) : null),
+    [isRigged, animationRoot],
+  );
+  const idleActionRef = useRef<THREE.AnimationAction | null>(null);
+  const gestureActionRef = useRef<THREE.AnimationAction | null>(null);
+
+  const reportRigged = useEffectEvent((modelUrl: string) => onRigged(modelUrl));
+  useEffect(() => {
+    if (isRigged) reportRigged(url);
+  }, [isRigged, url]);
+
+  useEffect(() => {
+    if (!mixer) return;
+    const action = mixer.clipAction(idleClip(animations));
+    action.play();
+    idleActionRef.current = action;
+    return () => {
+      action.stop();
+      idleActionRef.current = null;
+      mixer.uncacheRoot(animationRoot);
+    };
+  }, [animations, mixer, animationRoot]);
+
+  // A gesture cross-fades in from the idle loop, then fades back to idle:
+  // after one pass, after TIMED_CLIP_SECONDS for a walk or run, or for a
+  // seated clip only when the next gesture replaces it. The `idle` action
+  // itself just ends the gesture. Same rules as Lumiere's CreatureMesh.
+  const gestureClip = gesture?.clip;
+  const gestureCue = gesture?.cue;
+  useEffect(() => {
+    if (!mixer || !gestureClip || gestureCue == null) return;
+    const clip = resolveClip(gestureClip, animations);
+    const idle = idleActionRef.current;
+    const action = clip ? mixer.clipAction(clip) : null;
+    if (!action || action === idle) return;
+    const playback = clipPlayback(gestureClip);
+    action.reset().setLoop(playback === "once" ? THREE.LoopOnce : THREE.LoopRepeat, playback === "once" ? 1 : Infinity);
+    action.clampWhenFinished = playback === "once";
+    action.fadeIn(GESTURE_FADE_IN).play();
+    idle?.fadeOut(GESTURE_FADE_IN);
+    gestureActionRef.current = action;
+    const backToIdle = () => {
+      action.fadeOut(GESTURE_FADE_OUT);
+      idle?.reset().fadeIn(GESTURE_FADE_OUT).play();
+      gestureActionRef.current = null;
+    };
+    const onFinished = (event: { action: THREE.AnimationAction }) => {
+      if (event.action === action) backToIdle();
+    };
+    mixer.addEventListener("finished", onFinished);
+    const timer = playback === "timed" ? window.setTimeout(backToIdle, TIMED_CLIP_SECONDS * 1000) : undefined;
+    return () => {
+      mixer.removeEventListener("finished", onFinished);
+      window.clearTimeout(timer);
+      if (gestureActionRef.current !== action) return;
+      // When the model goes away the idle effect's cleanup has already
+      // uncached every action of the root; touching them again throws.
+      if (idleActionRef.current) backToIdle();
+      else gestureActionRef.current = null;
+    };
+  }, [gestureClip, gestureCue, mixer, animations]);
 
   useFrame((frameState, delta) => {
+    mixer?.update(Math.min(delta, 0.1));
     if (!groupRef.current) return;
 
     const smoothing = 1 - Math.exp(-delta * 7.5);
@@ -157,6 +263,15 @@ function GLBModel({ url, state, isPreview, audioLevel }: GLBModelProps) {
       audioLevelRef.current = THREE.MathUtils.lerp(audioLevelRef.current, 0, smoothing);
     }
 
+    // A rigged model's skeletal idle already shows it is alive: keep a faint
+    // swell, but no lift (its feet stay planted) and no glow, as in Lumiere and
+    // the dashboard. The container's CSS still marks listening and speaking.
+    if (isRigged) {
+      targetScale = 1 + (targetScale - 1) * 0.25;
+      targetYOffset = 0;
+      targetGlow = 0;
+    }
+
     scaleRef.current = THREE.MathUtils.lerp(scaleRef.current, targetScale, smoothing);
     yOffsetRef.current = THREE.MathUtils.lerp(yOffsetRef.current, targetYOffset, smoothing);
     groupRef.current.scale.setScalar(scaleRef.current);
@@ -192,6 +307,50 @@ function AdaptiveFov() {
     cam.updateProjectionMatrix();
   }, [camera, size]);
   return null;
+}
+
+// ─── Studio Lighting ────────────────────────────────────────────
+
+/**
+ * Ported from the dashboard (estuary-frontend model-3d-viewer StudioLighting).
+ *
+ * Generated characters are rough, non-metallic PBR materials (Tripo's
+ * metalness map averages ~0.02, roughness ~0.8). Under three's physical light
+ * units the old rig — 0.6 ambient plus two directional lights — lit them at
+ * well under half their real colour, so dark clothing and hair read as black.
+ * This adds soft light from every direction via three's RoomEnvironment
+ * (generated on the GPU, no HDR download) and a key/fill/rim set that models
+ * the face and separates the silhouette from the background.
+ */
+function StudioLighting() {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+    // The R3F scene is a mutable three.js object; lighting it is the point.
+    // eslint-disable-next-line react-hooks/immutability
+    scene.environment = environment;
+    scene.environmentIntensity = 0.5;
+    return () => {
+      scene.environment = null;
+      environment.dispose();
+    };
+  }, [gl, scene]);
+
+  return (
+    <>
+      <hemisphereLight args={["#ffffff", "#8c8279", 0.4]} />
+      {/* Key: in front, above and to the right of the camera. */}
+      <directionalLight position={[2.5, 4, 5]} intensity={1.6} />
+      {/* Fill: lower, from the left, softens the key's shadow side. */}
+      <directionalLight position={[-4, 1.5, 3]} intensity={0.5} />
+      {/* Rim: from behind, outlines hair and shoulders. */}
+      <directionalLight position={[0, 4, -5]} intensity={1.0} />
+    </>
+  );
 }
 
 // ─── Loading Overlay ────────────────────────────────────────────
@@ -236,6 +395,62 @@ function ProfileFallback({ avatarUrl }: { avatarUrl: string | null }) {
   );
 }
 
+// ─── Camera Ease ────────────────────────────────────────────────
+
+/**
+ * Gently rotate the orbit camera back to its saved front-facing framing,
+ * easing azimuth/polar/distance and target over ~0.7s instead of snapping via
+ * controls.reset(). Returns a function that cancels the ease.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function easeCameraToFront(controls: any): () => void {
+  const camera = controls.object as THREE.PerspectiveCamera;
+  const startTarget = controls.target.clone();
+  const endTarget = controls.target0.clone();
+  const startSph = new THREE.Spherical().setFromVector3(
+    camera.position.clone().sub(startTarget),
+  );
+  const endSph = new THREE.Spherical().setFromVector3(
+    controls.position0.clone().sub(endTarget),
+  );
+
+  // Take the shortest angular path for the azimuth so a long idle
+  // auto-rotation doesn't unwind the "long way" back to front.
+  const TWO_PI = Math.PI * 2;
+  let dTheta = (endSph.theta - startSph.theta) % TWO_PI;
+  if (dTheta > Math.PI) dTheta -= TWO_PI;
+  if (dTheta < -Math.PI) dTheta += TWO_PI;
+
+  const DURATION = 0.7; // seconds
+  const offset = new THREE.Vector3();
+  const sph = new THREE.Spherical();
+  let elapsed = 0;
+  let lastTime: number | null = null;
+  let rafId = 0;
+
+  const animate = (now: number) => {
+    if (lastTime === null) lastTime = now;
+    elapsed += (now - lastTime) / 1000;
+    lastTime = now;
+    const t = Math.min(1, elapsed / DURATION);
+    const e = t * t * (3 - 2 * t); // smoothstep ease-in-out
+
+    sph.radius = THREE.MathUtils.lerp(startSph.radius, endSph.radius, e);
+    sph.phi = THREE.MathUtils.lerp(startSph.phi, endSph.phi, e);
+    sph.theta = startSph.theta + dTheta * e;
+    sph.makeSafe();
+    offset.setFromSpherical(sph);
+
+    controls.target.lerpVectors(startTarget, endTarget, e);
+    camera.position.copy(controls.target).add(offset);
+    controls.update();
+
+    if (t < 1) rafId = requestAnimationFrame(animate);
+  };
+  rafId = requestAnimationFrame(animate);
+  return () => cancelAnimationFrame(rafId);
+}
+
 // ─── Main Component ─────────────────────────────────────────────
 
 export default function CharacterViewer({
@@ -246,10 +461,13 @@ export default function CharacterViewer({
   state,
   progress,
   audioLevel = 0,
+  gesture = null,
 }: CharacterViewerProps) {
   const isMobile = useIsMobile();
   const isSpeaking = state === "speaking";
   const [isDragPaused, setIsDragPaused] = useState(false);
+  // URL of the loaded model when it turned out to be rigged (it carries clips).
+  const [riggedUrl, setRiggedUrl] = useState<string | null>(null);
   const dragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const controlsRef = useRef<any>(null);
@@ -308,52 +526,7 @@ export default function CharacterViewer({
 
     const controls = controlsRef.current;
     if (!controls) return;
-
-    const camera = controls.object as THREE.PerspectiveCamera;
-    const startTarget = controls.target.clone();
-    const endTarget = controls.target0.clone();
-    const startSph = new THREE.Spherical().setFromVector3(
-      camera.position.clone().sub(startTarget),
-    );
-    const endSph = new THREE.Spherical().setFromVector3(
-      controls.position0.clone().sub(endTarget),
-    );
-
-    // Take the shortest angular path for the azimuth so a long idle
-    // auto-rotation doesn't unwind the "long way" back to front.
-    const TWO_PI = Math.PI * 2;
-    let dTheta = (endSph.theta - startSph.theta) % TWO_PI;
-    if (dTheta > Math.PI) dTheta -= TWO_PI;
-    if (dTheta < -Math.PI) dTheta += TWO_PI;
-
-    const DURATION = 0.7; // seconds
-    const offset = new THREE.Vector3();
-    const sph = new THREE.Spherical();
-    let elapsed = 0;
-    let lastTime: number | null = null;
-    let rafId = 0;
-
-    const animate = (now: number) => {
-      if (lastTime === null) lastTime = now;
-      elapsed += (now - lastTime) / 1000;
-      lastTime = now;
-      const t = Math.min(1, elapsed / DURATION);
-      const e = t * t * (3 - 2 * t); // smoothstep ease-in-out
-
-      sph.radius = THREE.MathUtils.lerp(startSph.radius, endSph.radius, e);
-      sph.phi = THREE.MathUtils.lerp(startSph.phi, endSph.phi, e);
-      sph.theta = startSph.theta + dTheta * e;
-      sph.makeSafe();
-      offset.setFromSpherical(sph);
-
-      controls.target.lerpVectors(startTarget, endTarget, e);
-      camera.position.copy(controls.target).add(offset);
-      controls.update();
-
-      if (t < 1) rafId = requestAnimationFrame(animate);
-    };
-    rafId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafId);
+    return easeCameraToFront(controls);
   }, [state]);
 
   const handleDragEnd = useCallback(() => {
@@ -369,6 +542,16 @@ export default function CharacterViewer({
   const activeModelUrl = proxyUrl(rawModelUrl);
   const isPreviewModel = !modelUrl && !!previewModelUrl && (isPreviewReady || isGenerating);
   const hasModel = !!activeModelUrl;
+  const isRigged = riggedUrl !== null && riggedUrl === activeModelUrl;
+
+  // A rigged character plays its clip toward the viewer, so a camera the user
+  // dragged away eases back to the front (Lumiere turns the model instead).
+  const gestureCue = gesture?.cue;
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!isRigged || gestureCue == null || !controls) return;
+    return easeCameraToFront(controls);
+  }, [isRigged, gestureCue]);
   const proxiedAvatar = proxyUrl(avatarUrl);
 
   // Show loading when model is being fetched or generating
@@ -406,17 +589,24 @@ export default function CharacterViewer({
           gl={{ alpha: true, antialias: !isMobile, stencil: false }}
           dpr={[1, 2]}
           style={{ background: "transparent" }}
+          // Neutral (Khronos PBR) tone mapping keeps a character's base colours
+          // true; R3F's default ACES darkens and desaturates the mid-tones a
+          // stylised character lives in. R3F only sets this once, at creation.
+          onCreated={({ gl }) => {
+            gl.toneMapping = THREE.NeutralToneMapping;
+            gl.toneMappingExposure = 1;
+          }}
         >
           <AdaptiveFov />
-          <ambientLight intensity={0.6} />
-          <directionalLight position={[5, 5, 5]} intensity={0.8} />
-          <directionalLight position={[-3, 2, -3]} intensity={0.3} />
+          <StudioLighting />
           <Suspense fallback={null}>
             <GLBModel
               url={activeModelUrl!}
               state={state}
               isPreview={isPreviewModel}
               audioLevel={audioLevel}
+              gesture={gesture}
+              onRigged={setRiggedUrl}
             />
           </Suspense>
           <OrbitControls
@@ -425,7 +615,8 @@ export default function CharacterViewer({
             enableZoom={true}
             minDistance={1.5}
             maxDistance={10}
-            autoRotate={(state === "idle" || state === "happy") && !isDragPaused}
+            // A rigged character stands and moves on its own instead of spinning.
+            autoRotate={(state === "idle" || state === "happy") && !isDragPaused && !isRigged}
             autoRotateSpeed={0.9}
             onEnd={handleDragEnd}
           />

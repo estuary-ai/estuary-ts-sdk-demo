@@ -8,6 +8,7 @@ import {
   type BotResponse,
   type SttResponse,
 } from "@estuary-ai/sdk";
+import type { ModelGesture } from "@/lib/clipActions";
 
 // Local type definition — published SDK 0.4.0 wires `capabilities` through to
 // the auth payload but doesn't re-export `SessionCapabilities` from its public
@@ -85,6 +86,8 @@ export function useEstuary() {
   const [botAudioLevel, setBotAudioLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  // The latest action the character chose, which a rigged model plays as a clip.
+  const [characterAction, setCharacterAction] = useState<ModelGesture | null>(null);
   const lastSttTextRef = useRef<string>("");
   const speakingGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Auto-mute illusion: set when the server releases the call's voice
@@ -224,6 +227,7 @@ export function useEstuary() {
             action: { name: action.name, params: action.params },
           },
         ]);
+        setCharacterAction((prev) => ({ clip: action.name, cue: (prev?.cue ?? 0) + 1 }));
       });
 
       client.on("sttResponse", (response: SttResponse) => {
@@ -419,6 +423,7 @@ export function useEstuary() {
     error,
     clearError,
     isProcessingImage,
+    characterAction,
     connect,
     disconnect,
     sendText,
